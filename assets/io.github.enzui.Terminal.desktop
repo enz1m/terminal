@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Name[es]=Terminal
+GenericName=Terminal
+GenericName[es]=Terminal
+Comment=Run commands in a secure terminal
+Comment[es]=Ejecutar comandos en una terminal segura
+Exec=terminal-emulator
+TryExec=terminal-emulator
+Icon=io.github.enzui.Terminal
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.github.enzui.Terminal
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;command;console;ssh;
+Keywords[es]=terminal;shell;comando;consola;ssh;

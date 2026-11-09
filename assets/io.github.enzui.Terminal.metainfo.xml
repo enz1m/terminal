@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.enzui.Terminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Terminal</name>
+  <summary>Run commands in a secure terminal</summary>
+  <description>
+    <p>
+      Terminal is a desktop terminal emulator for local shells and remote SSH
+      sessions, with tabs, split panes, and bounded scrollback.
+    </p>
+    <ul>
+      <li>Run real local shell sessions through pseudoterminals.</li>
+      <li>Organize sessions with tabs, split panes, and detached windows.</li>
+      <li>Connect to SSH endpoints without storing passwords in app state.</li>
+      <li>Store eligible pinned output only through the desktop Secret Service.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.enzui.Terminal.desktop</launchable>
+  <provides>
+    <binary>terminal-emulator</binary>
+  </provides>
+  <icon type="stock">io.github.enzui.Terminal</icon>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>shell</keyword>
+    <keyword>command</keyword>
+    <keyword>console</keyword>
+    <keyword>ssh</keyword>
+  </keywords>
+  <content_rating type="oars-1.1"/>
+  <developer id="io.github.enzui">
+    <name>enzUI contributors</name>
+  </developer>
+  <releases>
+    <release version="0.1.0" date="2026-11-09"/>
+  </releases>
+</component>

@@ -1,0 +1,44 @@
+# Exact diffed widget-tree census; tolerance 0 catches one added wrapper.
+#
+# Populations:
+#   - `Three`   = three sessions, one pane, Shell view, at all four rungs.
+#   - `Sweep`   = the `SessionCollection` session-count sweep at 1400x900 that
+#                 keeps the non-virtualised sidebar's linear growth on the
+#                 record. One pane, widest rung only.
+#   - `Crowded` = 24 distinct sessions (both kinds, three pinned, distinct
+#                 titles) with the active session split into four panes, at
+#                 all four rungs.
+#
+# Why panes and not only sessions: the Shell view branches on
+# `session.panes.len() > 1` (the pane bar and its `enz_action_bar` fold) and on
+# `pane_layout::is_narrow_layout(content_width, panes)` (one pane at a time
+# below 520 px of content). A one-pane fixture cannot reach either at any
+# width. Sessions alone would not either: below 640 px the sidebar is an
+# overlay drawer and is closed, so at 375x812 none of the 24 sessions is
+# realised.
+#
+# In `Crowded`, at 768 the action bar
+# folds `Rename pane` into a `More actions` trigger; at 375 it folds down to
+# `Close pane` plus `More actions`, and `is_narrow_layout` replaces the
+# four-surface grid with the active pane alone.
+#
+# At 375 four panes exist and exactly one is drawn, with no pointer route to
+# the other three (`switcher_next`/`switcher_prev` are `#[cfg(test)]`). This
+# census measures that state; it does not endorse it.
+#
+# Framework 5520fa535 adds a LayoutMemo node to each mounted content/sidebar slot:
+# two at inline-sidebar rungs, one with the drawer closed. The session slope
+# and zero tolerances are unchanged; qualification retains the previous graph.
+population,screen,width,height,model_items,widget_nodes,tolerance
+Three,Shell,1400,900,3,179,0
+Three,Shell,1024,768,3,179,0
+Three,Shell,768,1024,3,180,0
+Three,Shell,375,812,3,109,0
+Crowded,Shell,1400,900,24,496,0
+Crowded,Shell,1024,768,24,496,0
+Crowded,Shell,768,1024,24,497,0
+Crowded,Shell,375,812,24,143,0
+Sweep,SessionCollection,1400,900,50,693,0
+Sweep,SessionCollection,1400,900,100,1243,0
+Sweep,SessionCollection,1400,900,200,2343,0
+Sweep,SessionCollection,1400,900,10000,110143,0

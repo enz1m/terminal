@@ -1,0 +1,101 @@
+[package]
+repository = "https://github.com/enz1m/terminal"
+name = "terminal-emulator"
+version = "0.1.0"
+authors = ["enzUI contributors"]
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Run local shells and SSH sessions in a terminal emulator"
+rust-version = "1.95"
+
+[workspace]
+resolver = "3"
+
+[features]
+x11 = ["iced/x11", "enzui-terminal/x11", "enzui-widgets/x11"]
+default = []
+center = ["dep:enzui-agent", "dep:serde", "dep:serde_json"]
+native-invalidation-acceptance = ["enzui-core/native-invalidation"]
+
+[[bin]]
+name = "terminal-emulator"
+path = "src/main.rs"
+
+
+[dependencies]
+enzui-clipboard = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-activity = { features = ["operation-center"], git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+iced = { default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "canvas", "svg", "a11y", "tokio"], git = "https://github.com/enz1m/enzim-iced.git", rev = "67f991b7442cbd79821141069c3b864cc12413f2" }
+iced_renderer = { default-features = false, git = "https://github.com/enz1m/enzim-iced.git", rev = "67f991b7442cbd79821141069c3b864cc12413f2" }
+iced_graphics = { git = "https://github.com/enz1m/enzim-iced.git", rev = "67f991b7442cbd79821141069c3b864cc12413f2" }
+enzui-core = { features = ["accesskit", "portal-dbus", "activation-native-iced"], git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-services = { features = ["secret-service"], git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-terminal = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-parent-lease = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-theme = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-widgets = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-agent = { features = ["iced-consumer"], optional = true, git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+portable-pty = "0.9"
+termwiz = { version = "0.23", default-features = false }
+alacritty_terminal = { git = "https://github.com/enz1m/enzim-alacritty.git", rev = "669bf5c7de1d145dbb6e16fe5e6816914572ff4e", default-features = false }
+unicode-width = "0.2"
+memchr = "2"
+rustix = { version = "1.1", features = ["fs", "process"] }
+filedescriptor = "0.8"
+
+unicode-segmentation = "1"
+
+
+[dev-dependencies]
+enzui-test-support = { git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+enzui-core = { features = ["test-frame", "secret-observer"], git = "https://github.com/enz1m/enzui.git", tag = "v0.1.0-alpha.1" }
+iced_test = { git = "https://github.com/enz1m/enzim-iced.git", rev = "67f991b7442cbd79821141069c3b864cc12413f2" }
+
+[patch.crates-io]
+zbus_macros = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+zbus_names = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+zvariant = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+zvariant_derive = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+zvariant_utils = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+zbus = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "815a9ca7b64aa24e14ccb6ea3f7eda97ef7bbc8a" }
+winit = { git = "https://github.com/enz1m/enzim-winit.git", rev = "f6ce16941bf815a438db7e628ab1126ce48e31dd" }
+
+[lints.rust]
+unsafe_code = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)"] }
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+mem_forget = "warn"
+undocumented_unsafe_blocks = "warn"
+allow_attributes_without_reason = "warn"
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = 0
+incremental = false
+
+[profile.test.package."*"]
+opt-level = 2
+debug = 0
+incremental = false
+
+[profile.release]
+lto = false
+codegen-units = 16
+debug = 0
+strip = "debuginfo"
