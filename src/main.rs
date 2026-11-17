@@ -23,7 +23,7 @@ mod i18n;
 mod app_identity;
 
 mod launch_directory;
-pub(crate) use app_identity::{APP_ID, app_identity, main_window_settings};
+pub(crate) use app_identity::{app_identity, main_window_settings};
 mod blocking_dispatch;
 
 mod capture_keyring;

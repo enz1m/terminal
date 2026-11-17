@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::*;
+use crate::app_identity::APP_ID;
 
 /// What an admitted call asks the terminal to do.
 #[derive(Debug, PartialEq, Eq)]
