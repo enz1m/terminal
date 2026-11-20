@@ -1,0 +1,70 @@
+{
+  "app-id": "io.github.enzui.Terminal",
+  "branch": "stable",
+  "runtime": "org.freedesktop.Platform",
+  "runtime-version": "26.08",
+  "sdk": "org.freedesktop.Sdk",
+  "sdk-extensions": [
+    "org.freedesktop.Sdk.Extension.rust-stable"
+  ],
+  "command": "terminal-emulator",
+  "finish-args": [
+    "--socket=wayland",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.freedesktop.secrets",
+    "--filesystem=home",
+    "--socket=ssh-auth"
+  ],
+  "build-options": {
+    "append-path": "/usr/lib/sdk/rust-stable/bin"
+  },
+  "modules": [
+    {
+      "name": "sshpass",
+      "buildsystem": "autotools",
+      "license-files": [
+        "COPYING"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://downloads.sourceforge.net/project/sshpass/sshpass/1.10/sshpass-1.10.tar.gz",
+          "sha256": "ad1106c203cbb56185ca3bad8c6ccafca3b4064696194da879f81c8d7bdfeeda"
+        }
+      ]
+    },
+    {
+      "name": "terminal",
+      "buildsystem": "simple",
+      "build-commands": [
+        "cargo build --locked --offline --release --jobs \"${FLATPAK_BUILDER_N_JOBS:-2}\" --bin terminal-emulator",
+        "install -Dm755 target/release/terminal-emulator /app/bin/terminal-emulator",
+        "install -Dm644 assets/io.github.enzui.Terminal.desktop /app/share/applications/io.github.enzui.Terminal.desktop",
+        "install -Dm644 packaging/flatpak/io.github.enzui.Terminal.metainfo.xml /app/share/metainfo/io.github.enzui.Terminal.metainfo.xml",
+        "install -Dm644 assets/io.github.enzui.Terminal.svg /app/share/icons/hicolor/scalable/apps/io.github.enzui.Terminal.svg",
+        "install -Dm644 LICENSE /app/share/licenses/io.github.enzui.Terminal/LICENSE"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/enz1m/terminal.git",
+          "commit": "@ENZIM_SOURCE_COMMIT@",
+          "disable-submodules": true
+        },
+        {
+          "type": "archive",
+          "url": "https://github.com/enz1m/terminal/releases/download/v0.1.1/terminal-cargo-vendor-0.1.1.tar.xz",
+          "sha256": "53b970bab4cbd928bbcadd192439c3efb22ce0d20fc78f3dc64a03bd63828b8a",
+          "strip-components": 1
+        },
+        {
+          "type": "file",
+          "url": "https://raw.githubusercontent.com/enz1m/enzim-winit/40eeb41f8637ef1620afa377ba006874224b6d65/wayland-protocols/xdg-session-management-v1.xml",
+          "sha256": "3674591ca8e68f76297c535e8edd6783d84b59086c38ebe08ff5ff1f2dec5bae",
+          "dest": "vendor/winit-0.30.13/wayland-protocols"
+        }
+      ]
+    }
+  ]
+}

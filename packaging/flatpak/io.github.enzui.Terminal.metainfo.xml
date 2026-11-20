@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<component type="desktop-application">
+  <id>io.github.enzui.Terminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Terminal</name>
+  <summary>Run commands in a secure terminal</summary>
+  <description>
+    <p>Use tabs and splits to organize shell and SSH sessions. In the Flatpak, local commands run inside the sandbox using the packaged shell and tools.</p>
+  </description>
+  <launchable type="desktop-id">io.github.enzui.Terminal.desktop</launchable>
+  <provides>
+    <binary>terminal-emulator</binary>
+  </provides>
+  <icon type="stock">io.github.enzui.Terminal</icon>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <keywords>
+    <keyword>terminal</keyword>
+    <keyword>shell</keyword>
+    <keyword>command</keyword>
+    <keyword>console</keyword>
+    <keyword>ssh</keyword>
+  </keywords>
+  <content_rating type="oars-1.1" />
+  <developer id="io.github.enzui">
+    <name>enzUI contributors</name>
+  </developer>
+  <releases>
+    <release version="0.1.1" date="2026-11-20">
+      <description>
+        <p>Add Flatpak packaging for enzim Apps.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-11-09" />
+  </releases>
+  <url type="homepage">https://github.com/enz1m/terminal</url>
+  <url type="bugtracker">https://github.com/enz1m/terminal/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/enz1m/terminal/fdd8df13bd0206db140f742b82c82026edb5c042/docs/screenshots/basic-dark.png</image>
+    </screenshot>
+  </screenshots>
+</component>
