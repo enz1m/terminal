@@ -55,7 +55,7 @@
         {
           "type": "archive",
           "url": "https://github.com/enz1m/terminal/releases/download/v0.1.1/terminal-cargo-vendor-0.1.1.tar.xz",
-          "sha256": "53b970bab4cbd928bbcadd192439c3efb22ce0d20fc78f3dc64a03bd63828b8a",
+          "sha256": "b48d555e53d9d055bb59a9b4cb57983d3c80bda80f190826bcf72bcd8657ccb0",
           "strip-components": 1
         },
         {
