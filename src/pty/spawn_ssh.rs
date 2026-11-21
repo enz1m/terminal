@@ -607,25 +607,44 @@ impl PtySession {
         #[cfg(target_os = "linux")]
         let waiter_pidfd = Arc::clone(&process_identity.pidfd);
         #[cfg(target_os = "linux")]
+        let waiter_pid = process_identity.pid;
+        #[cfg(target_os = "linux")]
         let waiter_reap_request = Arc::clone(&reap_request);
         let waiter_leader_reaped = Arc::clone(&leader_reaped);
         let exit_thread = match thread::Builder::new()
             .name("terminal-emulator-exit-waiter".into())
             .spawn(move || {
                 #[cfg(target_os = "linux")]
-                let exit = match rustix::process::waitid(
-                    rustix::process::WaitId::PidFd(waiter_pidfd.as_ref().as_fd()),
-                    rustix::process::WaitIdOptions::EXITED | rustix::process::WaitIdOptions::NOWAIT,
-                ) {
-                    Ok(Some(status)) => describe_child_exit(&status),
-                    Ok(None) => ChildExit {
-                        detail: "process status unavailable: wait returned no status".into(),
-                        code: None,
-                    },
-                    Err(err) => ChildExit {
-                        detail: format!("process status unavailable: {err}"),
-                        code: None,
-                    },
+                let exit = {
+                    let opts = rustix::process::WaitIdOptions::EXITED
+                        | rustix::process::WaitIdOptions::NOWAIT;
+                    let wait_res = match rustix::process::waitid(
+                        rustix::process::WaitId::PidFd(waiter_pidfd.as_ref().as_fd()),
+                        opts,
+                    ) {
+                        Err(rustix::io::Errno::INVAL) => {
+                            // Linux < 5.4 (e.g. Android 4.19 kernels) may support pidfd_open
+                            // without P_PIDFD in waitid(); fall back to P_PID + WNOWAIT.
+                            match rustix::process::Pid::from_raw(waiter_pid as i32) {
+                                Some(pid) => {
+                                    rustix::process::waitid(rustix::process::WaitId::Pid(pid), opts)
+                                }
+                                None => Err(rustix::io::Errno::INVAL),
+                            }
+                        }
+                        other => other,
+                    };
+                    match wait_res {
+                        Ok(Some(status)) => describe_child_exit(&status),
+                        Ok(None) => ChildExit {
+                            detail: "process status unavailable: wait returned no status".into(),
+                            code: None,
+                        },
+                        Err(err) => ChildExit {
+                            detail: format!("process status unavailable: {err}"),
+                            code: None,
+                        },
+                    }
                 };
                 #[cfg(not(target_os = "linux"))]
                 let exit = match waiter_child.lock() {
