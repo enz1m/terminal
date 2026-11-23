@@ -24,18 +24,18 @@ path = "src/main.rs"
 
 
 [dependencies]
-enzui-clipboard = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-activity = { features = ["operation-center"], git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-iced = { default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "wayland-dlopen", "wayland-decorations", "canvas", "svg", "a11y", "tokio"], git = "https://github.com/enz1m/enzim-iced.git", rev = "e36b07b591661fdb666088fc943cc0b927a2367b" }
-iced_renderer = { default-features = false, git = "https://github.com/enz1m/enzim-iced.git", rev = "e36b07b591661fdb666088fc943cc0b927a2367b" }
-iced_graphics = { git = "https://github.com/enz1m/enzim-iced.git", rev = "e36b07b591661fdb666088fc943cc0b927a2367b" }
-enzui-core = { features = ["accesskit", "portal-dbus", "activation-native-iced"], git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-services = { features = ["secret-service"], git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-terminal = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-parent-lease = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-theme = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-widgets = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-agent = { features = ["iced-consumer"], optional = true, git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
+enzui-clipboard = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-activity = { features = ["operation-center"], git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+iced = { default-features = false, features = ["wgpu", "tiny-skia", "crisp", "web-colors", "thread-pool", "linux-theme-detection", "wayland", "wayland-dlopen", "wayland-decorations", "canvas", "svg", "a11y", "tokio"], git = "https://github.com/enz1m/enzim-iced.git", rev = "8cabe557ce42e96b4b3fb245f69488521fe6eacb" }
+iced_renderer = { default-features = false, git = "https://github.com/enz1m/enzim-iced.git", rev = "8cabe557ce42e96b4b3fb245f69488521fe6eacb" }
+iced_graphics = { git = "https://github.com/enz1m/enzim-iced.git", rev = "8cabe557ce42e96b4b3fb245f69488521fe6eacb" }
+enzui-core = { features = ["accesskit", "portal-dbus", "activation-native-iced"], git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-services = { features = ["secret-service"], git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-terminal = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-parent-lease = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-theme = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-widgets = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-agent = { features = ["iced-consumer"], optional = true, git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 
@@ -51,9 +51,9 @@ unicode-segmentation = "1"
 
 
 [dev-dependencies]
-enzui-test-support = { git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-enzui-core = { features = ["test-frame", "secret-observer"], git = "https://github.com/enz1m/enzui.git", tag = "v0.3.0-alpha.1" }
-iced_test = { git = "https://github.com/enz1m/enzim-iced.git", rev = "e36b07b591661fdb666088fc943cc0b927a2367b" }
+enzui-test-support = { git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+enzui-core = { features = ["test-frame", "secret-observer"], git = "https://github.com/enz1m/enzui.git", rev = "1bdeb634269dbb723841ed234855c36574db9038" }
+iced_test = { git = "https://github.com/enz1m/enzim-iced.git", rev = "8cabe557ce42e96b4b3fb245f69488521fe6eacb" }
 
 [patch.crates-io]
 zbus_macros = { git = "https://github.com/enz1m/enzim-zbus.git", rev = "e182645b56d15e637bb6c8144f99ebfa7f900716" }

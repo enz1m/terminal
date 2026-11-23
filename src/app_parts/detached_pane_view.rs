@@ -68,7 +68,7 @@ impl App {
         // A detached window writes its own screen (its scroll position is its
         // own); the reader writes only main-window panes.
         if let Some(pty) = self.ptys.get(pane_id) {
-            pty.set_live(None, 0);
+            pty.set_live(None, 0, false);
         }
         let grid = terminal_view::terminal_grid(
             &screen,

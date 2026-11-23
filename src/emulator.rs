@@ -75,6 +75,7 @@ pub(crate) struct TerminalEffects {
     pub commands_started: VecDeque<String>,
     /// Retire old coordinate-derived state before publishing the paired cell snapshot.
     pub coordinates_invalidated: bool,
+    pub(crate) line_erased: bool,
     /// Sequences whose payload outgrew [`escape_policy::MAX_STRING_SEQUENCE_BYTES`]
     /// and were discarded with the parser holding them.
     #[cfg(test)]
@@ -142,6 +143,7 @@ impl Dimensions for Size {
 /// per frame. Rows are converted exactly as the app converts them.
 pub(crate) struct LiveTarget {
     pub(crate) screen: enzui_terminal::TerminalScreen,
+    current: Arc<std::sync::atomic::AtomicBool>,
     pub(crate) focused: bool,
     pub(crate) cursor_style: String,
     /// Fingerprints of the rows last written, by row.
@@ -152,6 +154,7 @@ pub(crate) struct LiveTarget {
     /// How many of the newest scrollback rows the screen holds above the
     /// emulator's rows (the view draws them above its bounds).
     rows_above: u16,
+    defer_projection: bool,
     /// Which scrollback row each of those last showed (see [`above_print`]).
     above_printed: Vec<u64>,
 }
@@ -164,12 +167,14 @@ impl LiveTarget {
     ) -> Self {
         Self {
             screen,
+            current: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             focused,
             cursor_style: cursor_style.to_owned(),
             printed: Vec::new(),
             scheme: "",
             last: None,
             rows_above: 0,
+            defer_projection: false,
             above_printed: Vec::new(),
         }
     }
@@ -178,6 +183,11 @@ impl LiveTarget {
     /// the emulator's own rows.
     pub(crate) fn rows_above(mut self, rows: u16) -> Self {
         self.rows_above = rows;
+        self
+    }
+
+    pub(crate) fn defer_projection(mut self, defer: bool) -> Self {
+        self.defer_projection = defer;
         self
     }
 }
@@ -193,6 +203,7 @@ fn above_print(row: Option<&ScrollbackRow>, cols: usize) -> u64 {
 /// after the lock is released (never hold both).
 pub(crate) struct LiveWrite {
     screen: enzui_terminal::TerminalScreen,
+    current: Arc<std::sync::atomic::AtomicBool>,
     grid: (u16, u16),
     rows: Vec<(u16, Vec<enzui_terminal::Cell>)>,
     cursor: enzui_terminal::Cursor,
@@ -203,12 +214,16 @@ impl LiveWrite {
     pub(crate) fn apply(self) {
         let Self {
             screen,
+            current,
             grid,
             rows,
             cursor,
             fg,
         } = self;
         screen.update(|w| {
+            if !current.load(Ordering::Acquire) {
+                return;
+            }
             w.set_default_fg(fg);
             w.resize(grid.0, grid.1);
             for (y, cells) in rows {
@@ -507,7 +522,9 @@ impl Screen {
     /// Starts or stops writing the visible rows straight into a view's screen.
     /// Starting writes the whole screen at once, so it is never left stale.
     pub(crate) fn set_live(&mut self, target: Option<LiveTarget>) -> Option<LiveWrite> {
-        self.live_target = target;
+        if let Some(previous) = std::mem::replace(&mut self.live_target, target) {
+            previous.current.store(false, Ordering::Release);
+        }
         self.live_pending.store(false, Ordering::Release);
         self.live_write(true)
     }
@@ -529,14 +546,6 @@ impl Screen {
             live.scheme = scheme;
             live.above_printed.clear();
         }
-        let _overlays = crate::terminal_view::Overlays {
-            focused: live.focused,
-            cursor_visible: true,
-            selection: None,
-            window_start_row: 0,
-            matches: &[],
-        };
-        let _fills = crate::terminal_view::Fills::current();
         // The newest scrollback rows first, oldest at the top, then the
         // emulator's rows below them.
         let above = live.rows_above;
@@ -579,6 +588,7 @@ impl Screen {
         let scheme = crate::color_scheme::active();
         Some(LiveWrite {
             screen: live.screen.clone(),
+            current: Arc::clone(&live.current),
             grid: (cols as u16, above + rows as u16),
             rows: changed,
             cursor,
@@ -590,8 +600,31 @@ impl Screen {
         })
     }
 
-    pub(crate) fn coordinates_invalidated(&self) -> bool {
-        self.pending_effects.coordinates_invalidated
+    pub(crate) fn process_pty_output(&mut self, bytes: &[u8]) -> bool {
+        let before = (
+            *self.term.mode(),
+            self.scrollback_counter,
+            self.scrollback.len(),
+        );
+        self.process(bytes);
+        let after = (
+            *self.term.mode(),
+            self.scrollback_counter,
+            self.scrollback.len(),
+        );
+        let effects = self.pending_effects
+            != (TerminalEffects {
+                line_erased: self.pending_effects.line_erased,
+                ..TerminalEffects::default()
+            });
+        let direct = cfg!(target_os = "linux") && self.defers_projection();
+        !direct || effects || before != after
+    }
+
+    fn defers_projection(&self) -> bool {
+        self.live_target
+            .as_ref()
+            .is_some_and(|target| target.defer_projection)
     }
 
     pub(crate) fn has_terminal_replies(&self) -> bool {
@@ -633,7 +666,9 @@ impl Screen {
 
     /// Drain OSC/BEL effects produced since the previous call.
     pub(crate) fn take_effects(&mut self) -> TerminalEffects {
-        std::mem::take(&mut self.pending_effects)
+        let mut effects = std::mem::take(&mut self.pending_effects);
+        effects.coordinates_invalidated |= effects.line_erased && !self.defers_projection();
+        effects
     }
 
     /// Sets the retained-row bound; reducing it evicts rows immediately.
@@ -752,12 +787,14 @@ impl Screen {
     /// Parses `bytes` into the emulator, collecting the rows that scroll off.
     fn parse(&mut self, bytes: &[u8]) {
         let mut edited = false;
+        let mut erased = false;
         let mut hooked = handler::Hooked {
             term: &mut self.term,
             region: &mut self.region,
             scrolled: &mut self.scrolled,
             primary: &mut self.primary,
             edited: &mut edited,
+            erased: &mut erased,
         };
         self.parser.advance(&mut hooked, bytes);
         if let Some(deadline) = self.parser.sync_timeout().sync_timeout()
@@ -766,6 +803,7 @@ impl Screen {
             self.parser.stop_sync(&mut hooked);
         }
         self.pending_effects.coordinates_invalidated |= edited;
+        self.pending_effects.line_erased |= erased;
     }
 
     /// Moves the rows that scrolled off into this screen's scrollback.

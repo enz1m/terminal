@@ -280,3 +280,43 @@ fn a_live_screen_with_rows_above_leads_with_the_newest_scrollback() {
         assert_eq!(view.read(|v| v.cursor().row), above + 2, "the cursor's row");
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_live_line_erase_changes_cells_without_moving_transcript_coordinates() {
+    let mut s = screen(3, 20);
+    let view = enzui_terminal::TerminalScreen::new(1, 1, Default::default());
+    s.set_live(Some(
+        LiveTarget::new(view.clone(), true, "block").defer_projection(true),
+    ))
+    .unwrap()
+    .apply();
+    s.take_effects();
+
+    assert!(!s.process_pty_output(b"live\x1b[H\x1b[K"));
+    assert!(!s.take_effects().coordinates_invalidated);
+    assert!(s.process_pty_output(b"\x1b]2;title\x07"));
+    s.take_effects();
+    assert!(s.process_pty_output(b"\x1b[?1049h"));
+    assert!(s.take_effects().coordinates_invalidated);
+
+    s.set_live(Some(LiveTarget::new(view, true, "block")));
+    assert!(s.process_pty_output(b"live\x1b[H\x1b[K"));
+    assert!(s.take_effects().coordinates_invalidated);
+}
+
+#[test]
+fn a_retired_live_write_cannot_replace_the_new_view() {
+    let mut s = screen(2, 20);
+    let view = enzui_terminal::TerminalScreen::new(1, 1, Default::default());
+    s.process(b"old");
+    let stale = s
+        .set_live(Some(LiveTarget::new(view.clone(), true, "block")))
+        .unwrap();
+    s.process(b"\rnew");
+    s.set_live(Some(LiveTarget::new(view.clone(), true, "block")))
+        .unwrap()
+        .apply();
+    stale.apply();
+    assert_eq!(view.read(|screen| screen.row_text(0)), "new");
+}

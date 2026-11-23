@@ -608,26 +608,22 @@ fn view_row<C: ViewSource>(
     cells: impl Iterator<Item = C>,
     cols: usize,
 ) -> Vec<enzui_terminal::Cell> {
-    use crate::terminal_view::{CellParts, view_cell};
+    use crate::terminal_view::CellAppearance;
     use enzui_terminal::CellFlags as View;
     let blank = || {
-        view_cell(
-            CellParts {
-                ch: ' ',
-                combining: "",
-                blank: true,
-                bold: false,
-                tone: LineTone::Default,
-                fg: CellInk::Default,
-                bg: CellInk::Default,
-                attrs: 0,
-            },
-            || false,
+        CellAppearance::new(
+            false,
+            LineTone::Default,
+            CellInk::Default,
+            CellInk::Default,
+            0,
         )
+        .cell(' ', "", true, || false)
         .0
     };
     let mut out: Vec<enzui_terminal::Cell> = Vec::with_capacity(cols);
     let mut grapheme = String::new();
+    let mut last_appearance = None;
     // Whether the last cell pushed was a wide glyph (its next blank is its
     // second column).
     let mut spacer = false;
@@ -652,63 +648,59 @@ fn view_row<C: ViewSource>(
         if broken {
             flags.remove(Flags::WIDE_CHAR);
         }
-        grapheme.clear();
-        if broken
+        let (first, marks) = if broken
             || flags.contains(Flags::LEADING_WIDE_CHAR_SPACER)
             || cell.c() == '\0'
             || cell.c() == '\t'
         {
-            grapheme.push(' ');
+            (' ', &[][..])
         } else {
-            grapheme.push(cell.c());
-            grapheme.extend(cell.zerowidth());
-        }
-        let width = if flags.contains(Flags::WIDE_CHAR) {
-            2
-        } else {
-            1
+            (cell.c(), cell.zerowidth())
         };
-        let bold = flags.contains(Flags::BOLD);
-        let tone = tone_for(cell.fg(), flags);
-        let (fg, bg) = if flags.contains(Flags::INVERSE) {
-            (ink_fg_reversed(cell.bg()), ink_bg_reversed(cell.fg()))
+        let combining = if marks.is_empty() {
+            ""
         } else {
-            (ink(cell.fg()), ink(cell.bg()))
+            grapheme.clear();
+            grapheme.push(first);
+            grapheme.extend(marks.iter().copied());
+            &grapheme[first.len_utf8()..]
         };
-        let attrs = attrs_of(flags);
-        let is_blank = grapheme.trim().is_empty();
+        let key = (cell.fg(), cell.bg(), flags);
+        let appearance = match last_appearance {
+            Some((previous, appearance)) if key == previous => appearance,
+            _ => {
+                let (fg, bg) = if flags.contains(Flags::INVERSE) {
+                    (ink_fg_reversed(key.1), ink_bg_reversed(key.0))
+                } else {
+                    (ink(key.0), ink(key.1))
+                };
+                let appearance = CellAppearance::new(
+                    flags.contains(Flags::BOLD),
+                    tone_for(key.0, flags),
+                    fg,
+                    bg,
+                    attrs_of(flags),
+                );
+                last_appearance = Some((key, appearance));
+                appearance
+            }
+        };
+        let is_blank = first.is_whitespace() && marks.iter().copied().all(char::is_whitespace);
         while out.len() < col {
             push(&mut out, blank(), true);
         }
-        let first = grapheme.chars().next().unwrap_or(' ');
-        let (view, _) = view_cell(
-            CellParts {
-                ch: first,
-                combining: &grapheme[first.len_utf8()..],
-                blank: is_blank,
-                bold,
-                tone,
-                fg,
-                bg,
-                attrs,
-            },
-            || termwiz::cell::unicode_column_width(&grapheme, None) > 1,
-        );
+        let (view, _) = appearance.cell(first, combining, is_blank, || {
+            let mut bytes = [0; 4];
+            let text: &str = if combining.is_empty() {
+                first.encode_utf8(&mut bytes)
+            } else {
+                &grapheme
+            };
+            termwiz::cell::unicode_column_width(text, None) > 1
+        });
         push(&mut out, view, is_blank);
-        if width == 2 && out.len() < cols {
-            let (view, _) = view_cell(
-                CellParts {
-                    ch: ' ',
-                    combining: "",
-                    blank: true,
-                    bold,
-                    tone,
-                    fg,
-                    bg,
-                    attrs,
-                },
-                || false,
-            );
+        if flags.contains(Flags::WIDE_CHAR) && out.len() < cols {
+            let (view, _) = appearance.cell(' ', "", true, || false);
             push(&mut out, view, true);
         }
     }

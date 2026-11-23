@@ -13,6 +13,15 @@ impl App {
         // The crash breadcrumb comes first, so a message an early return
         // refuses or reroutes is still recorded (payload-free kind only).
         enzui_core::crash_report::observe(&message);
+        // Input uses the transcript, which can lag the live grid.
+        if !matches!(message, Message::Poll)
+            && self
+                .ptys
+                .values()
+                .any(pty::PtySession::has_undrained_output)
+        {
+            self.drain_ptys();
+        }
         let task = match message {
             Message::ActivityWindowTagged(window, tag, queued) => {
                 self.shell_activity.confirm_tag(window, &tag, queued);
@@ -50,26 +59,6 @@ impl App {
     pub(crate) fn update_message(&mut self, message: Message) -> Task<Message> {
         if self.input_context.is_some() {
             return self.update_inner(message);
-        }
-        if matches!(
-            message,
-            Message::PanePointer(..)
-                | Message::PaneInput(..)
-                | Message::InputMenuEvent(..)
-                | Message::RequestCopy
-                | Message::GridCellPressed(_)
-                | Message::GridCellDragged(_)
-                | Message::GridCellReleased(_)
-                | Message::FindNext
-                | Message::FindPrev
-                | Message::FindQueryChanged(_)
-        ) && self
-            .ptys
-            .values()
-            .any(pty::PtySession::coordinates_invalidated)
-        {
-            self.drain_ptys();
-            self.reconcile_operation_origins();
         }
         if !self.accepts_operation_completion(&message) {
             return Task::none();

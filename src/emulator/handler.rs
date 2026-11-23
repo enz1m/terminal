@@ -47,6 +47,7 @@ pub(super) struct Hooked<'a> {
     /// cells or lines, or scrolled a partial region): selections and find
     /// positions on those rows no longer name what they did.
     pub edited: &'a mut bool,
+    pub erased: &'a mut bool,
 }
 
 impl Hooked<'_> {
@@ -416,7 +417,19 @@ impl Handler for Hooked<'_> {
     }
     #[inline]
     fn clear_line(&mut self, a0: LineClearMode) {
-        *self.edited = true;
+        if !*self.edited && !*self.erased {
+            let cursor = &self.term.grid().cursor;
+            let row = &self.term.grid()[cursor.point.line];
+            let col = cursor.point.column;
+            let cells = match a0 {
+                LineClearMode::Right if cursor.input_needs_wrap => &[],
+                LineClearMode::Right => &row[col..],
+                LineClearMode::Left => &row[Column(0)..col + 1],
+                LineClearMode::All => &row[Column(0)..],
+            };
+            let blank = cursor.template.bg.into();
+            *self.erased = cells.iter().any(|cell| *cell != blank);
+        }
         self.term.clear_line(a0);
     }
     #[inline]

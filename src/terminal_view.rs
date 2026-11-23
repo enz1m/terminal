@@ -27,7 +27,9 @@ use termwiz::cell::unicode_column_width;
 use crate::grid_view::{
     self, GridPointerHooks, GridPointerTarget, MatchHighlight, resolve_bg_ink, resolve_fg_ink,
 };
-use crate::model::{LineTone, Settings, TranscriptCell, TranscriptLine, TranscriptRow, cell_attr};
+use crate::model::{
+    CellInk, LineTone, Settings, TranscriptCell, TranscriptLine, TranscriptRow, cell_attr,
+};
 use crate::selection::SelectionRange;
 
 /// Which surface a screen belongs to: a pane, in the main window (`None`) or
@@ -194,67 +196,69 @@ pub(crate) fn term_cell(cell: &TranscriptCell) -> (Cell, (u8, u8, u8)) {
     let text = cell.text.as_str();
     let mut chars = text.chars();
     let first = chars.next();
-    view_cell(
-        CellParts {
-            ch: first.unwrap_or(' '),
-            combining: chars.as_str(),
-            blank: cell.blank || first.is_none(),
-            bold: cell.bold,
-            tone: cell.tone,
-            fg: cell.fg,
-            bg: cell.bg,
-            attrs: cell.attrs,
-        },
+    CellAppearance::new(cell.bold, cell.tone, cell.fg, cell.bg, cell.attrs).cell(
+        first.unwrap_or(' '),
+        chars.as_str(),
+        cell.blank || first.is_none(),
         || unicode_column_width(text, None) > 1,
     )
 }
 
-/// What one cell is made of, from a transcript cell or straight from the
-/// emulator; [`view_cell`] turns it into the view's cell either way.
-pub(crate) struct CellParts<'a> {
-    pub ch: char,
-    pub combining: &'a str,
-    pub blank: bool,
-    pub bold: bool,
-    pub tone: LineTone,
-    pub fg: crate::model::CellInk,
-    pub bg: crate::model::CellInk,
-    pub attrs: u8,
+#[derive(Clone, Copy)]
+pub(crate) struct CellAppearance {
+    foreground: Rgba,
+    background: Rgba,
+    effective_background: (u8, u8, u8),
+    flags: CellFlags,
+    bold: bool,
 }
 
-/// A cell's colours resolved against the active scheme (background first,
-/// then the foreground's contrast floor against it), its glyph and flags;
-/// also the opaque colour under it. `wide` is asked only for a glyph.
-pub(crate) fn view_cell(parts: CellParts<'_>, wide: impl FnOnce() -> bool) -> (Cell, (u8, u8, u8)) {
-    let scheme = crate::color_scheme::active();
-    let bg = resolve_bg_ink(parts.bg);
-    let effective_bg = bg.unwrap_or(scheme.default_bg);
-    let (fg, dim) = match resolve_fg_ink(parts.fg, effective_bg) {
-        Some(fg) => (fg, matches!(parts.tone, LineTone::Subtle)),
-        None => tone_ink(parts.tone),
-    };
-    let mut flags = CellFlags::NONE;
-    if dim {
-        flags |= CellFlags::DIM;
-    }
-    let mut out = Cell::new(' ', rgba(fg));
-    if !parts.blank {
-        out.ch = parts.ch;
-        if !parts.combining.is_empty() {
-            out.combining = Some(parts.combining.into());
+impl CellAppearance {
+    pub(crate) fn new(bold: bool, tone: LineTone, fg: CellInk, bg: CellInk, attrs: u8) -> Self {
+        let scheme = crate::color_scheme::active();
+        let background = resolve_bg_ink(bg);
+        let effective_background = background.unwrap_or(scheme.default_bg);
+        let (foreground, dim) = match resolve_fg_ink(fg, effective_background) {
+            Some(fg) => (fg, matches!(tone, LineTone::Subtle)),
+            None => tone_ink(tone),
+        };
+        let mut flags = attr_flags(attrs);
+        if dim {
+            flags |= CellFlags::DIM;
         }
-        if parts.bold {
-            flags |= CellFlags::BOLD;
-        }
-        if wide() {
-            flags |= CellFlags::WIDE;
+        Self {
+            foreground: rgba(foreground),
+            background: background.map_or(Rgba::NONE, rgba),
+            effective_background,
+            flags,
+            bold,
         }
     }
-    if let Some(bg) = bg {
-        out.bg = rgba(bg);
+
+    pub(crate) fn cell(
+        self,
+        ch: char,
+        combining: &str,
+        blank: bool,
+        wide: impl FnOnce() -> bool,
+    ) -> (Cell, (u8, u8, u8)) {
+        let mut cell = Cell::blank(self.foreground);
+        cell.bg = self.background;
+        cell.flags = self.flags;
+        if !blank {
+            cell.ch = ch;
+            if !combining.is_empty() {
+                cell.combining = Some(combining.into());
+            }
+            if self.bold {
+                cell.flags |= CellFlags::BOLD;
+            }
+            if (!ch.is_ascii() || !combining.is_empty()) && wide() {
+                cell.flags |= CellFlags::WIDE;
+            }
+        }
+        (cell, self.effective_background)
     }
-    out.flags = flags | attr_flags(parts.attrs);
-    (out, effective_bg)
 }
 
 /// The view's flags for a cell's [`cell_attr`] bits.

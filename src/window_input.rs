@@ -141,6 +141,10 @@ impl Default for WindowInput {
 }
 
 impl WindowInput {
+    pub(crate) fn pointer_holding(&self) -> bool {
+        self.pointer.holding
+    }
+
     pub(crate) fn retire_input_focus(&mut self) {
         self.focus_generation.retire(CancelCause::Cancelled);
         self.focus_generation = RequestGeneration::new();

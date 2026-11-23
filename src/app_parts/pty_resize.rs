@@ -21,9 +21,16 @@ impl App {
             return true;
         };
         let live = at_end && quiet;
+        let defer_projection = self.find.query.is_empty()
+            && !self.grid_pointer.holding
+            && self
+                .window_inputs
+                .values()
+                .all(|state| state.ime.is_none() && !state.pointer_holding());
         pty.set_live(
             live.then(|| (screen, focused, self.settings.resolved_cursor_style())),
             rows_above,
+            defer_projection,
         );
         !live
     }

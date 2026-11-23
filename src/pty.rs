@@ -79,10 +79,6 @@ mod capability;
 #[cfg(target_os = "linux")]
 use capability::{PtyCapability, wrap_with_capability};
 
-/// Bytes-per-read cap. The reader thread reads freely; the poll just takes the
-/// latest projection each tick.
-pub(crate) const READ_CHUNK: usize = 4096;
-
 /// Default grid geometry we ask the child shell to render into before the first
 /// real resize from the measured cell size.
 pub(crate) const DEFAULT_ROWS: u16 = 30;
@@ -189,9 +185,15 @@ enum CustodyState {
     Lost,
 }
 
-/// What identifies a live target: the view's screen id, focus, cursor
-/// style, colour scheme and rows above the emulator's.
-type LiveKey = (u64, bool, String, &'static str, u16);
+#[derive(PartialEq)]
+struct LiveKey {
+    screen: u64,
+    focused: bool,
+    cursor_style: String,
+    scheme: &'static str,
+    rows_above: u16,
+    defer_projection: bool,
+}
 
 /// One live PTY-backed session (one per pane).
 pub(crate) struct PtySession {
@@ -358,12 +360,18 @@ impl PtySession {
         &self,
         target: Option<(&enzui_terminal::TerminalScreen, bool, &str)>,
         rows_above: u16,
+        defer_projection: bool,
     ) {
         // The colour scheme is part of the key: a scheme change rewrites the
         // screen even while the pane prints nothing.
         let scheme = crate::color_scheme::active().id;
-        let wanted = target.map(|(screen, focused, style)| {
-            (screen.id(), focused, style.to_owned(), scheme, rows_above)
+        let wanted = target.map(|(screen, focused, style)| LiveKey {
+            screen: screen.id(),
+            focused,
+            cursor_style: style.to_owned(),
+            scheme,
+            rows_above,
+            defer_projection,
         });
         {
             let mut current = self
@@ -379,11 +387,16 @@ impl PtySession {
             .ok()
             .and_then(|mut screen| {
                 screen.set_live(target.map(|(view, focused, style)| {
-                    emulator::LiveTarget::new(view.clone(), focused, style).rows_above(rows_above)
+                    emulator::LiveTarget::new(view.clone(), focused, style)
+                        .rows_above(rows_above)
+                        .defer_projection(defer_projection)
                 }))
             });
         if let Some(write) = write {
             write.apply();
+        }
+        if (target.is_none() || !defer_projection) && self.has_undrained_output() {
+            wake_bus().notify();
         }
     }
 
@@ -577,9 +590,8 @@ impl PtySession {
             .map_or(true, |screen| screen.pinned_capture.paused())
     }
 
-    pub(crate) fn coordinates_invalidated(&self) -> bool {
-        reader::lock_screen_for_ui(&self.screen)
-            .is_ok_and(|screen| screen.coordinates_invalidated())
+    pub(crate) fn has_undrained_output(&self) -> bool {
+        self.dirty.load(Ordering::SeqCst) != self.last_seen.load(Ordering::SeqCst)
     }
 
     /// This session's live link authority, or `0` when the screen cannot be

@@ -128,39 +128,33 @@ fn run_polling_reader_loop<R: Read + ?Sized>(
     dirty: &AtomicU64,
     wake: &WakeBus,
 ) {
-    let mut buf = [0u8; READ_CHUNK];
+    let mut buf = [0u8; 64 * 1024];
     let mut backoff = thread::sleep;
-    let watch = |fd: RawFd| filedescriptor::pollfd {
-        fd,
-        events: filedescriptor::POLLIN,
-        revents: 0,
-    };
     // A live pane's last write of a burst is owed until output pauses; poll
     // with a short timeout then, so it lands without waiting for more bytes.
     let live_pending = screen.lock().map(|s| s.live_pending.clone()).ok();
     loop {
-        let mut ready = [
-            watch(control.master.as_raw_fd()),
-            watch(control.cancel.as_raw_fd()),
-        ];
         let timeout = live_pending
             .as_ref()
             .filter(|pending| pending.load(Ordering::Acquire))
             .map(|_| emulator::LIVE_PERIOD);
-        match filedescriptor::poll(&mut ready, timeout) {
-            Ok(_) => {}
+        let [readable, cancelled] = match reader_ready(control, timeout) {
+            Ok(ready) => ready,
             Err(filedescriptor::Error::Poll(err))
-                if err.kind() == std::io::ErrorKind::Interrupted => {}
+                if err.kind() == std::io::ErrorKind::Interrupted =>
+            {
+                continue;
+            }
             Err(_) => {
                 report_reader_error(dirty, wake);
                 return;
             }
-        }
+        };
 
-        if ready[1].revents != 0 {
+        if cancelled {
             return;
         }
-        if ready[0].revents == 0 {
+        if !readable {
             // Timed out with a live write owed: flush it.
             let live = screen.lock().ok().and_then(|mut s| s.live_write(true));
             if let Some(live) = live {
@@ -168,12 +162,65 @@ fn run_polling_reader_loop<R: Read + ?Sized>(
             }
             continue;
         }
-        if ready[0].revents != 0
-            && !read_and_process_once(reader, &mut buf, screen, dirty, wake, &mut backoff)
-        {
+        if !read_and_process_once(
+            |buf| read_available(reader, control, buf),
+            &mut buf,
+            screen,
+            dirty,
+            wake,
+            &mut backoff,
+        ) {
             return;
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn reader_ready(
+    control: &LinuxReaderControl,
+    timeout: Option<Duration>,
+) -> Result<[bool; 2], filedescriptor::Error> {
+    let watch = |fd: RawFd| filedescriptor::pollfd {
+        fd,
+        events: filedescriptor::POLLIN,
+        revents: 0,
+    };
+    let mut events = [
+        watch(control.master.as_raw_fd()),
+        watch(control.cancel.as_raw_fd()),
+    ];
+    filedescriptor::poll(&mut events, timeout)?;
+    Ok(events.map(|event| event.revents != 0))
+}
+
+#[cfg(target_os = "linux")]
+fn read_available(
+    reader: &mut (impl Read + ?Sized),
+    control: &LinuxReaderControl,
+    buffer: &mut [u8],
+) -> std::io::Result<usize> {
+    let mut used = reader.read(buffer)?;
+    if used == 0 {
+        return Ok(0);
+    }
+    // TUIs can split a single repaint across multiple writes.
+    let grace = Duration::from_millis(1);
+    let grace_end = Instant::now() + grace;
+    while used < buffer.len() {
+        let timeout = if Instant::now() < grace_end {
+            grace
+        } else {
+            Duration::ZERO
+        };
+        if !matches!(reader_ready(control, Some(timeout)), Ok([true, false])) {
+            break;
+        }
+        match reader.read(&mut buffer[used..]) {
+            Ok(count) if count > 0 => used += count,
+            _ => break,
+        }
+    }
+    Ok(used)
 }
 
 /// The portable reader loop used by non-Linux production builds and by Linux
@@ -194,25 +241,31 @@ pub(crate) fn run_reader_loop<R, B>(
     R: Read + ?Sized,
     B: FnMut(Duration),
 {
-    let mut buf = [0u8; READ_CHUNK];
-    while read_and_process_once(reader, &mut buf, screen, dirty, wake, &mut backoff) {}
+    let mut buf = [0u8; 4096];
+    while read_and_process_once(
+        |buffer| reader.read(buffer),
+        &mut buf,
+        screen,
+        dirty,
+        wake,
+        &mut backoff,
+    ) {}
 }
 
 /// Perform one already-readable PTY read. `true` asks the caller to continue;
 /// EOF and permanent errors publish their terminal update and return `false`.
-fn read_and_process_once<R, B>(
-    reader: &mut R,
-    buf: &mut [u8; READ_CHUNK],
+fn read_and_process_once<B>(
+    read: impl FnOnce(&mut [u8]) -> std::io::Result<usize>,
+    buf: &mut [u8],
     screen: &Mutex<emulator::Screen>,
     dirty: &AtomicU64,
     wake: &WakeBus,
     backoff: &mut B,
 ) -> bool
 where
-    R: Read + ?Sized,
     B: FnMut(Duration),
 {
-    match reader.read(buf) {
+    match read(buf) {
         Ok(0) => {
             if let Ok(mut s) = screen.lock() {
                 s.process(b"\r\n[process exited]\r\n");
@@ -225,25 +278,22 @@ where
             false
         }
         Ok(n) => {
-            let (live, replies) = match screen.lock() {
+            let (live, update, replies) = match screen.lock() {
                 Ok(mut s) => {
-                    s.process(&buf[..n]);
-                    (s.live_write(false), s.has_terminal_replies())
+                    let update = s.process_pty_output(&buf[..n]);
+                    (s.live_write(false), update, s.has_terminal_replies())
                 }
-                Err(_) => (None, false),
+                Err(_) => (None, false, false),
             };
             // A live pane's view is written outside the screen lock.
             if let Some(live) = live {
                 live.apply();
             }
             yield_to_ui();
-            // Ring AFTER the bytes are in the `Screen`, so the drain
-            // this wakes projects a screen that already contains them.
-            // Ringing first would race the app to an unchanged snapshot
-            // and drop the output until the next byte arrived.
+            // The UI must see the new screen state when it handles the wake.
             if replies {
                 wake.notify_reply();
-            } else {
+            } else if update {
                 wake.notify();
             }
             true
