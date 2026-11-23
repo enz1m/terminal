@@ -989,19 +989,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enzui-activity"
-version = "0.3.0-alpha.1"
-source = "git+https://github.com/enz1m/enzui.git?rev=27d8e8bb1951713ff3c45d6b5a7cb4e2e782c610#27d8e8bb1951713ff3c45d6b5a7cb4e2e782c610"
-dependencies = [
- "enzui-core",
- "getrandom 0.3.4",
- "serde",
- "serde_json",
- "tokio",
- "zbus",
-]
-
-[[package]]
 name = "enzui-agent"
 version = "0.3.0-alpha.1"
 source = "git+https://github.com/enz1m/enzui.git?rev=27d8e8bb1951713ff3c45d6b5a7cb4e2e782c610#27d8e8bb1951713ff3c45d6b5a7cb4e2e782c610"
@@ -4550,7 +4537,6 @@ name = "terminal-emulator"
 version = "0.1.2"
 dependencies = [
  "alacritty_terminal",
- "enzui-activity",
  "enzui-agent",
  "enzui-clipboard",
  "enzui-core",

@@ -87,8 +87,6 @@ pub(crate) enum Message {
     ContentResized(iced::Size),
     /// The boot task's `window::open` resolved: this is the main window.
     MainWindowOpened(iced::window::Id),
-    ActivityWindowTagged(iced::window::Id, String, bool),
-    ActivityPrune(u64),
     /// A detached session's own window opened and carries this id. The session
     /// id travels with it because a `window::Id` is minted by the runtime, not
     /// chosen by the app.

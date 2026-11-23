@@ -303,5 +303,3 @@ app-scrollback-lines-84bdec = Scrollback lines ({ $arg0 } – { $arg1 })
 app-waiting-for-the-system-keyring-c0cf76 = Waiting for the system keyring…
 app-e-g-ubuntu-609eda = e.g. ubuntu
 app-secure-output-removal-is-pending-73c10e = Secure output removal is pending.
-
-terminal-shell-running-command = Running command

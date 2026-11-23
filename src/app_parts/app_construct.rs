@@ -184,7 +184,6 @@ impl App {
                 .waiting_budget(WaitingBudget::unbounded().max_waiting(Some(0)))
                 .id_prefix("terminal-emulator-toast"),
             toast_expiry: ToastExpirySchedule::default(),
-            shell_activity: Default::default(),
             shortcuts,
             main_window: None,
             window_chrome: HashMap::new(),

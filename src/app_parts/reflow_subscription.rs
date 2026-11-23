@@ -93,7 +93,6 @@ impl App {
                         .map(|(_deadline, now)| Message::Toast(ToastEvent::Tick(now)))
                 });
         let subscriptions = vec![
-            self.shell_activity.subscription(),
             poll,
             inputs,
             chrome,

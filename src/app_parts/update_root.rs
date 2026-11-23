@@ -23,14 +23,6 @@ impl App {
             self.drain_ptys();
         }
         let task = match message {
-            Message::ActivityWindowTagged(window, tag, queued) => {
-                self.shell_activity.confirm_tag(window, &tag, queued);
-                Task::none()
-            }
-            Message::ActivityPrune(deadline) => {
-                self.shell_activity.prune(deadline);
-                Task::none()
-            }
             Message::InputFocusEdge(window, edge) => {
                 self.apply_focus_edge(window, edge);
                 Task::none()
@@ -40,7 +32,6 @@ impl App {
             }
             message => self.update_message(message),
         };
-        self.sync_shell_activity();
         self.bound_scrollback_expansion();
         self.prune_dismissed_notices();
         let task = Task::batch([task, self.look_up_git_branches()]);

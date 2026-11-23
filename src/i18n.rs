@@ -82,7 +82,6 @@ pub(crate) fn label(source: &'static str) -> &'static str {
 
 #[rustfmt::skip]
 const MESSAGES: &[(&str, &str)] = &[
-    ("Running command", "terminal-shell-running-command"),
     (" · Agent is ready", "app-agent-is-ready-8175bb"),
     (" · Agent unavailable", "app-agent-unavailable-b1015c"),
     ("A connection is being saved. Wait for publication to finish before changing saved connections.", "app-a-connection-is-being-saved-wait-for-publication-to-finish-befor-050f3f"),

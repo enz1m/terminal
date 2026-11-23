@@ -100,7 +100,6 @@ pub(crate) use settings_texts::{
 };
 mod settings_store;
 mod settings_surface;
-mod shell_activity;
 mod shell_history;
 mod shell_status;
 pub(crate) use shell_status::{
@@ -557,7 +556,6 @@ fn localized_main() -> iced::Result {
                 // layouts.
                 let (id, open) = iced::window::open(main_window_settings());
                 let mut app = app;
-                app.shell_activity = shell_activity::ShellActivity::production();
                 app.expect_main_window(id);
                 let toast_fixture = if capture_toast {
                     Task::done(Message::CopyHistoryCommand(

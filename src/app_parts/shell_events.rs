@@ -20,7 +20,6 @@ impl App {
         let pane_id = pane.id.clone();
         let mut dirty = false;
         for event in events {
-            self.shell_activity.event(&pane_id, &event);
             session.in_app_history.apply_shell_event(&event);
             let old_status = session.status;
             let unavailable = matches!(&event, ShellEvent::Unavailable);

@@ -74,7 +74,6 @@ impl App {
             self.retire_openssh_choice();
         }
         match message {
-            Message::ActivityWindowTagged(..) | Message::ActivityPrune(..) => return Task::none(),
             Message::WindowChromeKey(window, _, key, mods, captured) => {
                 return self.reduce_window_chrome(window, key, mods, captured);
             }

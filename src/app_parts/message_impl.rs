@@ -27,8 +27,6 @@ impl enzui_core::crash_report::MessageKind for Message {
             Self::ModifiersChanged(..) => "ModifiersChanged",
             Self::ContentResized(..) => "ContentResized",
             Self::MainWindowOpened(..) => "MainWindowOpened",
-            Self::ActivityWindowTagged(..) => "ActivityWindowTagged",
-            Self::ActivityPrune(..) => "ActivityPrune",
             Self::DetachedWindowOpened { .. } => "DetachedWindowOpened",
             Self::WindowClosed(..) => "WindowClosed",
             Self::WindowFocusChanged(..) => "WindowFocusChanged",

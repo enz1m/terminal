@@ -8,10 +8,7 @@ impl App {
         self.windows.opened_primary(id);
         self.opening_window = None;
         self.invalidate_sidebar();
-        Task::batch([
-            self.resume_endpoint_restores(),
-            self.shell_activity.bind_window(id),
-        ])
+        self.resume_endpoint_restores()
     }
     pub(crate) fn reduce19_detached_window_opened_1(
         &mut self,
@@ -40,12 +37,7 @@ impl App {
         } else {
             self.orphaned_windows.push(window);
         }
-        let bind = if self.detached_windows.contains_key(&window) {
-            self.shell_activity.bind_window(window)
-        } else {
-            Task::none()
-        };
-        Task::batch([self.resume_endpoint_restores(), bind])
+        self.resume_endpoint_restores()
     }
     pub(crate) fn reduce19_window_resized_2(
         &mut self,

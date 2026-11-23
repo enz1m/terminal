@@ -6,7 +6,6 @@ type FittedGrid = ((u16, u16), (u16, u16));
 
 pub(crate) struct App {
     pub(crate) themes: ThemeIntegration,
-    pub(crate) shell_activity: crate::shell_activity::ShellActivity,
     pub(crate) screen: Screen,
     pub(crate) sessions: Vec<Session>,
     pub(crate) active: usize,

@@ -303,5 +303,3 @@ app-scrollback-lines-84bdec = Líneas del historial ({ $arg0 } – { $arg1 })
 app-waiting-for-the-system-keyring-c0cf76 = Esperando al llavero del sistema…
 app-e-g-ubuntu-609eda = p. ej., ubuntu
 app-secure-output-removal-is-pending-73c10e = La eliminación de la salida segura está pendiente.
-
-terminal-shell-running-command = Ejecutando un comando
