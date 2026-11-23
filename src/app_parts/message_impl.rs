@@ -64,6 +64,7 @@ impl enzui_core::crash_report::MessageKind for Message {
             Self::SelectNextSession => "SelectNextSession",
             Self::SelectPrevSession => "SelectPrevSession",
             Self::NewLocal => "NewLocal",
+            Self::NewLocalFromTitlebar => "NewLocalFromTitlebar",
             Self::PaneSpawned(..) => "PaneSpawned",
             Self::ReconnectRestoredPane => "ReconnectRestoredPane",
             Self::RestoredGridResized(..) => "RestoredGridResized",

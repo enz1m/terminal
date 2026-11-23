@@ -2,6 +2,48 @@
 
 use crate::{FIND_PLACEHOLDER, Message};
 use iced::Task;
+use iced::advanced::widget::{Id, Operation, operation::Focusable};
+
+pub(crate) const SIDEBAR_ACTIONS_ID_PREFIX: &str = "terminal-sidebar-actions";
+
+pub(crate) fn new_local_titlebar_id(in_sidebar: bool) -> Id {
+    if in_sidebar {
+        enzui_core::identity::OwnerId::of_kind(
+            enzui_widgets::action_bar::COMMAND_ID_KIND,
+            SIDEBAR_ACTIONS_ID_PREFIX,
+        )
+        .id("session.new")
+    } else {
+        Id::new("terminal.titlebar.new-local")
+    }
+}
+
+pub(crate) fn release_new_local_titlebar_focus(window: iced::window::Id) -> Task<Message> {
+    struct ReleaseNewLocal([Id; 2]);
+
+    impl Operation for ReleaseNewLocal {
+        fn focusable(
+            &mut self,
+            id: Option<&Id>,
+            _bounds: iced::Rectangle,
+            state: &mut dyn Focusable,
+        ) {
+            if id.is_some_and(|id| self.0.contains(id)) {
+                state.unfocus();
+            }
+        }
+
+        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
+            operate(self);
+        }
+    }
+
+    // A newer focus operation may already have reached another control.
+    enzui_core::app_runtime::window_operation_task(
+        window,
+        ReleaseNewLocal([new_local_titlebar_id(false), new_local_titlebar_id(true)]),
+    )
+}
 
 /// Decode a key press into a **chrome focus traversal** message, or `None` to
 /// let the key fall through to `Message::KeyPressed` (and thence to the PTY).

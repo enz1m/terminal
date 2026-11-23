@@ -18,7 +18,7 @@ impl App {
                         "session.new",
                         "plus",
                         crate::i18n::label("New local terminal"),
-                        Message::NewLocal,
+                        Message::NewLocalFromTitlebar,
                     ),
                     TitlebarActionItem::icon(
                         "app.ssh",
@@ -37,7 +37,7 @@ impl App {
             )
             .overflow_open(self.sidebar_titlebar_overflow_open)
             .action_dismiss(Message::SidebarTitlebarOverflow(false))
-            .action_menu_id_prefix("terminal-sidebar-actions")
+            .action_menu_id_prefix(crate::focus_ids::SIDEBAR_ACTIONS_ID_PREFIX)
             .into_element()
     }
 

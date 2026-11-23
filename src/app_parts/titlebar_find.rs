@@ -90,12 +90,13 @@ impl App {
             .is_some_and(|session| session.panes.len() > 1);
         TitlebarActionItem::with_inline(
             Descriptor::new("session.new").pinned(),
-            Action::new("session.new", Message::NewLocal)
+            Action::new("session.new", Message::NewLocalFromTitlebar)
                 .with_label(crate::i18n::label("New local terminal"))
                 .with_icon(Icon::named("plus")),
-            move |_, _| {
-                let mut button = enz_toolbar_icon("plus", Message::NewLocal)
-                    .label(crate::i18n::label("New local terminal"));
+            move |action, _| {
+                let mut button = enz_toolbar_icon("plus", action.message().clone())
+                    .label(action.label().to_owned())
+                    .id(crate::focus_ids::new_local_titlebar_id(false));
                 if !grouped {
                     button = button.tokens(titlebar_icon_tokens());
                 }

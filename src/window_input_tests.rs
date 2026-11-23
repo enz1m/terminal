@@ -183,6 +183,72 @@ fn dispatch(app: &mut App, message: Message) {
     let task = app.update(message);
     settle(app, task);
 }
+
+#[test]
+fn titlebar_new_tab_releases_its_focus_without_releasing_find() {
+    use iced::advanced::widget::{Operation, operation};
+    use iced_test::Simulator;
+
+    let mut fixture = fixture();
+    let window = fixture.main;
+    let size = iced::Size::new(1400.0, 900.0);
+    let button = crate::focus_ids::new_local_titlebar_id(true);
+    let nodes = crate::review::probe::nodes_of(fixture.app.view_window(window), size);
+    let at = nodes
+        .iter()
+        .find(|node| node.id.as_ref() == Some(&button))
+        .expect("visible new tab button")
+        .bounds
+        .center();
+    let message = crate::review::probe::click_at(fixture.app.view_window(window), size, at)
+        .into_iter()
+        .find(|message| matches!(message, Message::NewLocalFromTitlebar))
+        .expect("new tab pointer action");
+    let old_pane = fixture.app.active_pane_id();
+    let task = fixture.app.update(message);
+    assert_ne!(fixture.app.active_pane_id(), old_pane);
+    let mut actions = iced_test::runtime::task::into_stream(task).expect("new tab work");
+    let mut release = None;
+    while let Some(action) = complete(actions.next()) {
+        match action {
+            Action::WidgetIn {
+                window: owner,
+                operation,
+            } => {
+                assert_eq!(owner, window);
+                release = Some(operation);
+            }
+            Action::Output(message) => dispatch(&mut fixture.app, message),
+            _ => {}
+        }
+    }
+
+    let mut release = release.expect("focus handoff for the new tab");
+    let mut ui = Simulator::with_size(
+        iced::Settings::default(),
+        size,
+        fixture.app.view_window(window),
+    );
+    ui.operate(&mut operation::focusable::focus(button.clone()));
+    ui.operate(release.as_mut());
+    let mut button_focus = operation::focusable::is_focused(button);
+    ui.operate(&mut operation::black_box(&mut button_focus));
+    assert!(matches!(
+        button_focus.finish(),
+        operation::Outcome::Some(false)
+    ));
+
+    let find = crate::find_field_id();
+    ui.operate(&mut operation::focusable::focus(find.clone()));
+    ui.operate(release.as_mut());
+    let mut find_focus = operation::focusable::is_focused(find);
+    ui.operate(&mut operation::black_box(&mut find_focus));
+    assert!(matches!(
+        find_focus.finish(),
+        operation::Outcome::Some(true)
+    ));
+}
+
 fn origin(f: &Fixture) -> OperationOrigin {
     f.app.input_origin(&f.session, &f.b).unwrap()
 }

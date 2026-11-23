@@ -33,6 +33,11 @@ impl App {
         self.new_local_session()
     }
 
+    pub(crate) fn new_local_from_titlebar(&mut self) -> Task<Message> {
+        let spawn = self.new_local_session();
+        Task::batch([self.release_new_local_titlebar_focus(), spawn])
+    }
+
     /// The next tab shown in the main window from `from`, stepping by `step`
     /// (1 or -1) and wrapping, past detached tabs.
     pub(crate) fn docked_session_from(&self, from: usize, step: isize) -> Option<usize> {

@@ -355,15 +355,27 @@ impl App {
             .and_then(|origin| origin.window)
             .or(self.main_window);
         if let Some(window) = window {
-            if let Some(state) = self.window_inputs.get_mut(&window) {
-                if !state.terminal_focus {
-                    state.retire_input_focus();
-                }
-                state.terminal_focus = true;
-            }
+            self.claim_terminal_focus(window);
             release_focus_in(window)
         } else {
             crate::release_chrome_focus_task()
+        }
+    }
+
+    pub(crate) fn release_new_local_titlebar_focus(&mut self) -> Task<Message> {
+        let Some(window) = self.main_window else {
+            return Task::none();
+        };
+        self.claim_terminal_focus(window);
+        crate::focus_ids::release_new_local_titlebar_focus(window)
+    }
+
+    fn claim_terminal_focus(&mut self, window: iced::window::Id) {
+        if let Some(state) = self.window_inputs.get_mut(&window) {
+            if !state.terminal_focus {
+                state.retire_input_focus();
+            }
+            state.terminal_focus = true;
         }
     }
 

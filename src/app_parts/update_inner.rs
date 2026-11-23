@@ -38,9 +38,15 @@ impl App {
             }.into());
             return Task::none();
         }
+        if matches!(&message, Message::NewLocalFromTitlebar)
+            && (self.settings_open || self.ssh_manager_open || settings_surface::is_closing(self))
+        {
+            return Task::none();
+        }
         if matches!(
             &message,
             Message::NewLocal
+                | Message::NewLocalFromTitlebar
                 | Message::SelectSession(_)
                 | Message::SelectDockedSession(_)
                 | Message::SelectNextSession
@@ -194,6 +200,7 @@ impl App {
             }
             Message::SelectPrevSession => return self.reduce9_select_prev_session_2(),
             Message::NewLocal => return self.reduce9_new_local_3(),
+            Message::NewLocalFromTitlebar => return self.new_local_from_titlebar(),
             Message::PaneSpawned(ticket, pane, outcome) => {
                 if let Some(outcome) = outcome.take() {
                     self.finish_pane_spawn(ticket, &pane, outcome);

@@ -197,6 +197,7 @@ pub(crate) enum Message {
     SelectPrevSession,
     /// New local session.
     NewLocal,
+    NewLocalFromTitlebar,
     /// A PTY spawned off the reducer thread finished: its ticket, its pane
     /// id, and the PTY or the reason there is none.
     PaneSpawned(
