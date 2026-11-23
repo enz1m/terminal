@@ -31,10 +31,9 @@
   <releases>
     <release version="0.1.2" date="2026-11-23">
       <description>
-        <p>Focus the terminal when opening a tab from the titlebar and reduce redraw work during live output.</p>
-        <p>Use the process ID as a fallback when waiting for an SSH session to exit.</p>
-        <p>The Flatpak runs local commands inside its sandbox and connects to remote hosts through SSH.</p>
-        <p>Update enzUI and its paired iced fork for nonblocking Wayland presentation discovery.</p>
+        <p>A new tab opened from the title bar is ready for typing immediately, and fast command output redraws more smoothly.</p>
+        <p>SSH sessions can detect when the underlying process exits even if the usual session notification is unavailable.</p>
+        <p>The Flatpak runs local commands inside its sandbox and supports remote sessions over SSH.</p>
       </description>
     </release>
     <release version="0.1.1" date="2026-11-20">
