@@ -409,6 +409,8 @@ pub(crate) enum Message {
     /// the framework `enz_confirm_dialog` preset, so the buttons arrive here
     /// too rather than through a second wiring.
     ConfirmDeleteSshHostEvent(ConfirmDialogEvent),
+    /// The running-command close confirmation ended.
+    RunningCloseEvent(ConfirmDialogEvent),
     /// Connect to the app-saved host at index (creates an SSH session).
     ConnectSshHost(usize),
     /// Start the secret-free interactive session that lets OpenSSH ask for an

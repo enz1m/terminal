@@ -1,7 +1,7 @@
 //! Opening a local tab must not wait for its shell.
 //!
-//! The PTY spawn waits up to the capability handshake budget (500 ms) for the
-//! child, so it runs on a worker and the tab is published first. Each spawn
+//! The PTY spawn does filesystem and process work, so it runs on a worker and
+//! the tab is published first. Each spawn
 //! here is held on a gate the test releases: had the spawn run inline, the
 //! held closure would still be parked inside `new_local_session_in_background`
 //! when the assertions after it run.
@@ -218,4 +218,40 @@ fn an_endpoint_restart_spawns_off_the_reducer_and_only_once() {
 
     app.settle_for_test(Task::batch([task, again]));
     assert!(!app.pane_spawn_pending(&pid));
+}
+
+/// Closing a tab whose shell is running a command asks first: cancelling keeps
+/// the tab and its shell, confirming closes it.
+#[test]
+fn closing_a_tab_with_a_running_command_asks_first() {
+    use enzui_core::modal::DismissCause;
+    use enzui_widgets::confirm_dialog::ConfirmDialogEvent;
+
+    let mut app = App::session_fixture();
+    let (task, pid, held) = open_held_tab(&mut app, pty::PtySession::spawn_shell_at);
+    held.release.send(()).expect("release the spawn");
+    app.settle_for_test(task);
+    if !app.ptys.contains_key(&pid) {
+        eprintln!("cannot spawn a real PTY here; the close guard was not checked");
+        return;
+    }
+    let tab = app.sessions[app.active].id.clone();
+    let open = |app: &App| app.sessions.iter().any(|session| session.id == tab);
+    app.sessions[app.active].panes[0].status = SessionStatus::Running;
+
+    let _ = app.update(Message::CloseActive);
+    assert!(open(&app) && app.ptys.contains_key(&pid));
+    assert!(app.pending_running_close.is_some());
+    let _ = app.update(Message::RunningCloseEvent(ConfirmDialogEvent::Resolved(
+        DismissCause::Escape,
+    )));
+    assert!(open(&app) && app.ptys.contains_key(&pid));
+    assert!(app.pending_running_close.is_none());
+
+    let _ = app.update(Message::CloseActive);
+    let _ = app.update(Message::RunningCloseEvent(ConfirmDialogEvent::Resolved(
+        DismissCause::DefaultAction,
+    )));
+    assert!(!open(&app) && !app.ptys.contains_key(&pid));
+    assert!(app.pending_running_close.is_none());
 }

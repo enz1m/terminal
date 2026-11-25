@@ -75,20 +75,8 @@ fn all_marked_pids(marker: &str) -> Vec<u32> {
 }
 
 #[cfg(target_os = "linux")]
-fn capability_test_path(label: &str) -> (capability::tests::RuntimeFixture, PathBuf) {
-    let fixture = capability::tests::RuntimeFixture::new();
-    let path = fixture.runtime().join(label);
-    (fixture, path)
-}
-
-#[cfg(target_os = "linux")]
 fn process_group_of(pid: u32) -> Option<u32> {
     read_process_stat(pid).ok().map(|stat| stat.process_group)
-}
-
-#[cfg(target_os = "linux")]
-fn process_parent_of(pid: u32) -> Option<u32> {
-    read_process_stat(pid).ok().map(|stat| stat.parent)
 }
 
 #[cfg(target_os = "linux")]
@@ -126,9 +114,8 @@ impl UnrelatedPtyHolder {
     /// `posix_spawn` returns once the child's exec has replaced its memory,
     /// before the kernel closes its close-on-exec descriptors. Until then the
     /// child's `/proc/<pid>/fd` still lists this process's descriptors,
-    /// including the session's slave and its retained capability FIFO, so a
-    /// check made then calls an unrelated process a capability holder. On
-    /// one CPU that window is the common case.
+    /// including the session's slave, so a check made then sees a descriptor
+    /// the holder never opened. On one CPU that window is the common case.
     fn settled(&self, marker: &str) -> bool {
         let wanted = format!("{marker}-unrelated");
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -153,38 +140,6 @@ impl UnrelatedPtyHolder {
 
     fn pid(&self) -> u32 {
         self.0.id()
-    }
-
-    /// Every descriptor the holder has open, for a failure message.
-    fn descriptors(&self) -> Vec<String> {
-        use std::os::unix::fs::FileTypeExt as _;
-        let Ok(entries) = std::fs::read_dir(format!("/proc/{}/fd", self.pid())) else {
-            return vec!["<no fd directory>".into()];
-        };
-        let mut found: Vec<String> = entries
-            .filter_map(Result::ok)
-            .map(|entry| {
-                let target = std::fs::read_link(entry.path())
-                    .map_or_else(|err| format!("<{err}>"), |path| path.display().to_string());
-                let identity = std::fs::metadata(entry.path()).map_or_else(
-                    |err| format!("<{err}>"),
-                    |meta| {
-                        format!(
-                            "dev={} ino={} fifo={}",
-                            meta.dev(),
-                            meta.ino(),
-                            meta.file_type().is_fifo()
-                        )
-                    },
-                );
-                format!(
-                    "{} -> {target} ({identity})",
-                    entry.file_name().to_string_lossy()
-                )
-            })
-            .collect();
-        found.sort();
-        found
     }
 
     fn is_alive(&mut self) -> bool {
@@ -324,9 +279,6 @@ impl Drop for MarkedProcessCleanup {
         kill_marked_children(&self.0);
     }
 }
-
-#[path = "tests/capability_tests.rs"]
-mod capability_tests;
 
 #[path = "tests/identity_tests.rs"]
 mod identity_tests;

@@ -308,71 +308,10 @@ impl PtySession {
             secret.release_probe = Some(probe.clone());
         }
 
-        // Capability failure must leave the shell usable with leader/SID ownership,
-        // not invent descriptor inheritance.
-        #[cfg(target_os = "linux")]
-        let mut capability = None;
-        #[cfg(target_os = "linux")]
-        let created_capability = {
-            #[cfg(test)]
-            {
-                match control.capability_path.clone() {
-                    Some(path) => PtyCapability::create_for_test(
-                        path,
-                        control.setup_failure,
-                        control.path_was_visible.as_deref(),
-                    ),
-                    None => PtyCapability::create(&cmd),
-                }
-            }
-            #[cfg(not(test))]
-            {
-                PtyCapability::create(&cmd)
-            }
-        };
-        #[cfg(target_os = "linux")]
-        let cmd = match created_capability {
-            Ok(created) => {
-                #[cfg(test)]
-                let handshake_path = if control.fail_capability_handshake {
-                    created.handoff_path().with_extension("missing")
-                } else {
-                    created.handoff_path()
-                };
-                #[cfg(not(test))]
-                let handshake_path = created.handoff_path();
-                let wrapped = wrap_with_capability(cmd, &handshake_path);
-                #[cfg(test)]
-                let wrapped = if control.delay_capability_handshake {
-                    let mut wrapped = wrapped;
-                    let script = wrapped.get_argv()[2]
-                        .to_str()
-                        .expect("capability script")
-                        .to_owned();
-                    wrapped.get_argv_mut()[2] = format!(
-                        "/bin/bash --noprofile --norc -c 'IFS= read -r -t 5 value'; {script}"
-                    )
-                    .into();
-                    wrapped
-                } else {
-                    wrapped
-                };
-                capability = Some(created);
-                wrapped
-            }
-            Err(_) => cmd,
-        };
-
         // The reader must be cancellable even when an unrelated process has
         // independently opened the slave and therefore prevents master EOF.
         // Poll a `dup` of THIS master alongside a private cancellation pipe;
-        // both pty descriptors stay blocking. The test-only errors are placed
-        // immediately before the corresponding fallible production operation,
-        // after capability ownership has begun.
-        #[cfg(all(test, target_os = "linux"))]
-        if control.setup_failure == Some(PtySetupFailure::MasterDup) {
-            return Err(PtyError::CloneReader("injected master dup failure".into()));
-        }
+        // both pty descriptors stay blocking.
         #[cfg(target_os = "linux")]
         let reader_poll_master = pair
             .master
@@ -382,12 +321,6 @@ impl PtySession {
                 filedescriptor::FileDescriptor::dup(&BorrowedMasterFd(fd))
                     .map_err(|err| PtyError::CloneReader(err.to_string()))
             })?;
-        #[cfg(all(test, target_os = "linux"))]
-        if control.setup_failure == Some(PtySetupFailure::CancelPipe) {
-            return Err(PtyError::CloneReader(
-                "injected cancellation pipe failure".into(),
-            ));
-        }
         #[cfg(target_os = "linux")]
         let mut reader_cancel =
             filedescriptor::Pipe::new().map_err(|err| PtyError::CloneReader(err.to_string()))?;
@@ -398,26 +331,18 @@ impl PtySession {
             .reserve()
             .ok_or(PtyError::TeardownCapacity)?;
 
-        #[cfg(all(test, target_os = "linux"))]
-        if control.setup_failure == Some(PtySetupFailure::Spawn) {
-            return Err(PtyError::Spawn("injected child spawn failure".into()));
-        }
         let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|err| PtyError::Spawn(err.to_string()))?;
-        // A live child can open either /proc handoff lazily; every failure below
-        // must kill and reap it before releasing either descriptor number.
+        // A live child can open the password /proc handoff lazily; every failure
+        // below must kill and reap it before releasing that descriptor number.
         #[cfg(all(test, target_os = "linux"))]
         if let Some(slot) = control.spawned_child_pid.as_ref()
             && let Ok(mut slot) = slot.lock()
         {
             *slot = child.process_id();
         }
-        #[cfg(target_os = "linux")]
-        let capability_handoff = capability.as_ref().map(PtyCapability::retain_handoff);
-        #[cfg(target_os = "linux")]
-        let capability = capability.and_then(|capability| capability.seal(child.process_id()));
         // portable-pty makes the child a session leader; pin its pidfd before a
         // waiter can reap it and allow its PID/SID to be recycled.
         #[cfg(target_os = "linux")]
@@ -426,7 +351,6 @@ impl PtySession {
                 pid,
                 #[cfg(test)]
                 pair.master.tty_name(),
-                capability,
             )
             .ok()
         }) {
@@ -791,8 +715,6 @@ impl PtySession {
             force_sweep_panic: false,
             #[cfg(target_os = "linux")]
             _password_secret: secret,
-            #[cfg(target_os = "linux")]
-            _capability_handoff: capability_handoff,
             #[cfg(test)]
             final_freeze_scans,
             #[cfg(test)]

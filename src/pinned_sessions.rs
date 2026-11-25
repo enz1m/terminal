@@ -161,6 +161,9 @@ impl App {
             // state; honouring it directly cannot trap it open.
             return self.close_dependent_window(window);
         }
+        if self.hold_running_close(&Message::CloseRequested(window)) {
+            return iced::Task::none();
+        }
         if self.close_terminates(window) {
             self.drain_ptys();
             let windows: Vec<_> = self.windows.open_windows().collect();
@@ -172,7 +175,7 @@ impl App {
     // The ledger's own rule, read without mutating it before the close is
     // committed: the last window, or the primary while its policy closes
     // everything.
-    fn close_terminates(&self, window: iced::window::Id) -> bool {
+    pub(crate) fn close_terminates(&self, window: iced::window::Id) -> bool {
         use enzui_core::window_lifecycle::PrimaryClosePolicy;
 
         self.windows.open_count() <= 1

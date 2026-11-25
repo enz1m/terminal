@@ -91,9 +91,9 @@ impl PtySession {
         Self::finish_spawn_with_wake_bus(session_id, pair, cmd, wake, default_reader_spawner)
     }
 
-    /// Spawn an interactive job-control session whose leader and background
-    /// jobs ignore HUP and TERM. One job has a different process group in the
-    /// original session; another calls `setsid()`. Both retain PTY descriptors.
+    /// Spawn an interactive job-control session whose leader ignores HUP and
+    /// TERM while it waits for a foreground job. It also starts a background
+    /// job, a `nohup`-style child, a plain child and a `setsid()` descendant.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn spawn_shutdown_probe(
         session_id: impl Into<String>,
@@ -102,36 +102,6 @@ impl PtySession {
         let (pair, cmd) = real_hup_ignoring_pair_and_cmd(marker, true)
             .ok_or_else(|| PtyError::OpenPty("openpty unavailable".into()))?;
         Self::finish_spawn(session_id, pair, cmd)
-    }
-
-    /// Spawn a real child while deterministically denying the FIFO handshake.
-    /// The resulting session must retain no capability and fall back to the
-    /// pinned leader/session ancestry ownership path.
-    #[cfg(all(test, target_os = "linux"))]
-    pub(in crate::pty) fn spawn_failed_capability_handshake_probe(
-        session_id: impl Into<String>,
-        marker: &str,
-        capability_path: PathBuf,
-        path_was_visible: Arc<AtomicBool>,
-        fixture: &capability::tests::RuntimeFixture,
-    ) -> Result<Self, PtyError> {
-        let (pair, mut cmd) = real_hup_ignoring_pair_and_cmd(marker, false)
-            .ok_or_else(|| PtyError::OpenPty("openpty unavailable".into()))?;
-        fixture.configure(&mut cmd);
-        Self::finish_spawn_with_wake_bus_controlled(
-            session_id,
-            pair,
-            cmd,
-            wake_bus(),
-            default_reader_spawner,
-            None,
-            PtySpawnTestControl {
-                capability_path: Some(capability_path),
-                path_was_visible: Some(path_was_visible),
-                fail_capability_handshake: true,
-                ..PtySpawnTestControl::default()
-            },
-        )
     }
 
     #[cfg(test)]
@@ -157,7 +127,8 @@ impl PtySession {
     }
 
     #[cfg(all(test, target_os = "linux"))]
-    pub(crate) fn owned_process_ids(&self) -> Vec<u32> {
+    pub(crate) fn owned_process_ids(&mut self) -> Vec<u32> {
+        self.capture_foreground();
         let mut owned = Vec::new();
         let _ = self.process_identity.refresh_owned_processes(&mut owned);
         owned.into_iter().map(|member| member.pid).collect()
@@ -166,20 +137,6 @@ impl PtySession {
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn tty_name_for_tests(&self) -> Option<PathBuf> {
         self.process_identity.tty_name.clone()
-    }
-
-    /// Does `pid` hold this session's inherited capability descriptor?
-    #[cfg(all(test, target_os = "linux"))]
-    pub(crate) fn capability_held_by(&self, pid: u32) -> bool {
-        self.process_identity
-            .capability
-            .as_ref()
-            .is_some_and(|capability| capability.is_held_by(pid))
-    }
-
-    #[cfg(all(test, target_os = "linux"))]
-    pub(crate) fn has_capability(&self) -> bool {
-        self.process_identity.capability.is_some()
     }
 
     /// Spawn a deterministic child that reports the numeric value of exactly
@@ -351,10 +308,7 @@ impl PtySession {
             Box::leak(Box::new(WakeBus::default())),
             default_reader_spawner,
             None,
-            PtySpawnTestControl {
-                capability_path: Some(root.join("capability.fifo")),
-                ..PtySpawnTestControl::default()
-            },
+            PtySpawnTestControl::default(),
         )
     }
 
@@ -413,10 +367,7 @@ impl PtySession {
             default_reader_spawner,
             None,
             500,
-            PtySpawnTestControl {
-                capability_path: Some(root.join("native-capability.fifo")),
-                ..PtySpawnTestControl::default()
-            },
+            PtySpawnTestControl::default(),
         )
     }
 
@@ -498,10 +449,7 @@ exec /bin/bash --noprofile --norc -i
             default_reader_spawner,
             secret,
             500,
-            PtySpawnTestControl {
-                capability_path: Some(root.join("capability.fifo")),
-                ..PtySpawnTestControl::default()
-            },
+            PtySpawnTestControl::default(),
         )
     }
 
@@ -548,10 +496,7 @@ exec /bin/bash --noprofile --norc -i
             default_reader_spawner,
             None,
             cap,
-            PtySpawnTestControl {
-                capability_path: Some(root.join("capability.fifo")),
-                ..PtySpawnTestControl::default()
-            },
+            PtySpawnTestControl::default(),
         )
     }
 }

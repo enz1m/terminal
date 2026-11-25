@@ -14,7 +14,13 @@ impl App {
 
     fn localized_window(&self, window: iced::window::Id) -> Element<'_, Message> {
         if let Some(detached) = self.detached_windows.get(&window) {
-            return self.detached_view(window, &detached.session);
+            // Child 0 stays stable whether or not the confirmation is shown.
+            let layers = std::iter::once(self.detached_view(window, &detached.session))
+                .chain(self.running_close_overlay(Some(window)));
+            return iced::widget::stack(layers)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into();
         }
         if self.main_window == Some(window) {
             self.view()

@@ -3,12 +3,11 @@
 use super::*;
 
 impl PtySession {
-    /// Terminate and reap this PTY's process tree, close its endpoints, and
-    /// join both worker threads. Calling this more than once is a no-op. Linux
-    /// teardown freezes the leader first, then captures every same-session,
-    /// descendant, or exact slave-fd holder as a verified pidfd. This includes
-    /// interactive jobs in other process groups and descendants which called
-    /// `setsid()`.
+    /// Hang up this PTY's processes, end those that close with it, close its
+    /// endpoints, and join both worker threads. Calling this more than once is
+    /// a no-op. On Linux the leader and the foreground job get SIGHUP first and
+    /// are terminated only if they outlive it; background jobs, `nohup`
+    /// commands and `setsid()` descendants are left running.
     pub(crate) fn shutdown(&mut self) -> PtyTeardownOutcome {
         #[cfg(test)]
         assert!(
@@ -27,12 +26,9 @@ impl PtySession {
             if self.reader_thread.is_none() && self.exit_thread.is_none() && !writer_running {
                 #[cfg(unix)]
                 self.shell_startup.take();
-                // With no workers, no owned child can still open either handoff.
+                // With no workers, no owned child can still open the password handoff.
                 #[cfg(target_os = "linux")]
-                {
-                    let _ = self._password_secret.take();
-                    self._capability_handoff.take();
-                }
+                let _ = self._password_secret.take();
                 let outcome = PtyTeardownOutcome::settled();
                 self.teardown_outcome = Some(outcome);
                 return outcome;
@@ -42,9 +38,43 @@ impl PtySession {
         self.settle_pass()
     }
 
-    /// The one-time graceful phase: cancel the reader, freeze the tree, TERM it
-    /// and wait a bounded interval before any uncatchable signal.
+    /// Records the foreground process group, which closes with the leader.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn capture_foreground(&mut self) {
+        self.process_identity.foreground = self
+            .master
+            .as_ref()
+            .and_then(|master| master.process_group_leader())
+            .and_then(|pid| u32::try_from(pid).ok());
+    }
+
+    /// SIGHUP and SIGCONT to every process that closes with this PTY, then a
+    /// bounded wait for them to exit.
+    #[cfg(target_os = "linux")]
+    fn hang_up(&mut self) {
+        let _ = self
+            .process_identity
+            .refresh_owned_processes(&mut self.owned);
+        for member in self
+            .owned
+            .iter()
+            .filter(|member| member.presence().is_owed())
+        {
+            member.signal(rustix::process::Signal::HUP);
+            member.signal(rustix::process::Signal::CONT);
+        }
+        let deadline = Instant::now() + SHUTDOWN_HANGUP_GRACE;
+        while self.process_identity.owed_processes(&self.owned) != 0 && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// The one-time graceful phase: cancel the reader, hang up, then freeze
+    /// what remains, TERM it and wait a bounded interval before any
+    /// uncatchable signal.
     pub(crate) fn begin_termination(&mut self) {
+        #[cfg(target_os = "linux")]
+        self.capture_foreground();
         // Close the queue before any signal so no further input can be
         // admitted, and mark it closing so queued input is discarded rather
         // than delivered; the writer thread then ends once its current chunk
@@ -68,9 +98,10 @@ impl PtySession {
 
         #[cfg(target_os = "linux")]
         {
+            self.hang_up();
             // Freeze the root before discovering descendants so it cannot fork
             // behind the scan. Repeated stop-and-rescan catches children that
-            // were already crossing fork/setsid when shutdown began.
+            // were already crossing fork when the hangup ended.
             let _ = self.process_identity.freeze_and_capture_until_stable(
                 &mut self.owned,
                 Instant::now() + SHUTDOWN_TERM_GRACE,
@@ -299,7 +330,6 @@ impl PtySession {
             {
                 self.reader_cancel.take();
                 let _ = self._password_secret.take();
-                self._capability_handoff.take();
             }
             true
         } else {
@@ -364,7 +394,7 @@ impl PtySession {
     /// this one inert.
     ///
     /// The leader pidfd and each descendant pidfd, both worker handles, the pty
-    /// pair, the cancellation pipe, both `/proc` handoffs and the capacity
+    /// pair, the cancellation pipe, the password `/proc` handoff and the capacity
     /// reservation all move. Nothing is closed and no slot is returned, which
     /// is what makes this safe to call from a `Drop` that cannot run a pass.
     pub(crate) fn transfer_custody(&mut self) -> Self {
@@ -424,8 +454,6 @@ impl PtySession {
             force_sweep_panic: self.force_sweep_panic,
             #[cfg(target_os = "linux")]
             _password_secret: self._password_secret.take(),
-            #[cfg(target_os = "linux")]
-            _capability_handoff: self._capability_handoff.take(),
             #[cfg(test)]
             final_freeze_scans: Arc::clone(&self.final_freeze_scans),
             #[cfg(test)]

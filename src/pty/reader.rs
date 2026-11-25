@@ -48,16 +48,16 @@ pub(crate) fn real_hup_ignoring_pair_and_cmd(
         cmd.arg("--norc");
         cmd.arg("-i");
         cmd.arg("-c");
-        // The escaped descendant scrubs its environment with `env -i` before
-        // `setsid -f` double-forks it: no inherited marker string survives, its
-        // session and parent links are gone, and only the inherited capability
-        // descriptor still ties it to this PTY.
+        // The foreground job handles HUP and ignores TERM, so only escalation
+        // ends it; the other children show which processes outlive the PTY.
         cmd.arg(
             "trap '' HUP TERM; \
              set +m; /usr/bin/env -i /usr/bin/setsid -f /bin/bash -c 'trap \"\" HUP TERM; exec -a \"$1-scrubbed\" /bin/sleep 20' shutdown-probe \"$1\" & \
+             (trap '' HUP; exec -a \"$1-nohup\" /bin/sleep 20) & \
+             (trap - HUP TERM; exec -a \"$1-plain\" /bin/sleep 20) & \
              set -m; (trap '' HUP TERM; exec -a \"$1-background\" /bin/sleep 20) & \
              printf 'enzui-job-control-ready\\n'; \
-             exec -a \"$1-leader\" /bin/sleep 20",
+             (trap - HUP TERM; exec /bin/bash --noprofile --norc -c 'trap : HUP; trap \"\" TERM; while :; do /bin/sleep 0.05; done' \"$1-foreground\")",
         );
     } else {
         cmd.arg(

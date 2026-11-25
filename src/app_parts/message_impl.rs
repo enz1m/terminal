@@ -120,6 +120,7 @@ impl enzui_core::crash_report::MessageKind for Message {
             Self::DeleteSshHost(..) => "DeleteSshHost",
             Self::ConfirmDeleteSshHost(..) => "ConfirmDeleteSshHost",
             Self::ConfirmDeleteSshHostEvent(..) => "ConfirmDeleteSshHostEvent",
+            Self::RunningCloseEvent(..) => "RunningCloseEvent",
             Self::ConnectSshHost(..) => "ConnectSshHost",
             Self::ConfirmHostKey(..) => "ConfirmHostKey",
             Self::ConnectOpenSshHost(..) => "ConnectOpenSshHost",

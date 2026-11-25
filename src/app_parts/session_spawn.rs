@@ -1,10 +1,9 @@
 //! Terminal pane spawn methods: new local tabs, and the worker every PTY spawn
 //! runs on.
 //!
-//! Starting a shell or `ssh` opens a PTY, forks the child and then waits up to
-//! the PTY capability handshake budget (500 ms) for the child to prove it
-//! inherited its capability FIFO, and resolving a local working directory
-//! stats the filesystem. None of that may run on the reducer thread: the pane
+//! Starting a shell or `ssh` opens a PTY, stages shell startup files and forks
+//! the child, and resolving a local working directory stats the filesystem.
+//! None of that may run on the reducer thread: the pane
 //! that will hold the PTY (a new tab, including the first one at startup, a
 //! split, an SSH session or a reconnecting endpoint pane) is published at once
 //! with its placeholder text, and the spawn runs on a short-lived worker whose

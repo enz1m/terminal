@@ -8,7 +8,8 @@ pub(crate) struct LinuxProcessIdentity {
     pub(crate) start_ticks: u64,
     #[cfg(test)]
     pub(crate) tty_name: Option<PathBuf>,
-    pub(super) capability: Option<PtyCapability>,
+    /// The PTY's foreground process group when teardown began.
+    pub(crate) foreground: Option<u32>,
     // The waiter deliberately leaves this leader waitable until shutdown has
     // finished enumerating its session. That pins the numeric SID while every
     // member is converted into its own stable pidfd.
@@ -77,12 +78,6 @@ pub(crate) struct OwnedSessionMember {
 #[cfg(all(test, target_os = "linux"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PtySetupFailure {
-    Mkfifo,
-    Open,
-    Metadata,
-    MasterDup,
-    CancelPipe,
-    Spawn,
     /// Injected AFTER the child is spawned, at `take_writer`.
     TakeWriter,
     /// Injected AFTER the child is spawned, at `try_clone_reader`.
@@ -92,11 +87,7 @@ pub(crate) enum PtySetupFailure {
 #[cfg(all(test, target_os = "linux"))]
 #[derive(Default)]
 pub(crate) struct PtySpawnTestControl {
-    pub(crate) capability_path: Option<PathBuf>,
-    pub(crate) path_was_visible: Option<Arc<AtomicBool>>,
     pub(crate) setup_failure: Option<PtySetupFailure>,
-    pub(crate) fail_capability_handshake: bool,
-    pub(crate) delay_capability_handshake: bool,
     /// Records the pid of the child actually spawned.
     pub(crate) spawned_child_pid: Option<Arc<Mutex<Option<u32>>>>,
     /// Attached to the exact password object before spawn. Its Drop event runs
@@ -214,7 +205,6 @@ impl LinuxProcessIdentity {
     pub(super) fn capture(
         pid: u32,
         #[cfg(test)] tty_name: Option<PathBuf>,
-        capability: Option<PtyCapability>,
     ) -> std::io::Result<Self> {
         let before = read_process_stat(pid)?;
         let pidfd = open_pidfd(pid)?;
@@ -229,7 +219,7 @@ impl LinuxProcessIdentity {
             start_ticks: after.start_ticks,
             #[cfg(test)]
             tty_name,
-            capability,
+            foreground: None,
             pidfd: Arc::new(pidfd),
         })
     }
@@ -266,26 +256,21 @@ impl LinuxProcessIdentity {
     /// Move this identity into a new value, leaving the original inert.
     ///
     /// The pidfd is already shared, so the exact leader handle survives in both
-    /// values and is not closed by the drained one. The capability descriptor
-    /// moves, because only one holder may use it to discover members.
+    /// values and is not closed by the drained one.
     pub(crate) fn transfer(&mut self) -> Self {
         Self {
             pid: self.pid,
             start_ticks: self.start_ticks,
             #[cfg(test)]
             tty_name: self.tty_name.take(),
-            capability: self.capability.take(),
+            foreground: self.foreground,
             pidfd: Arc::clone(&self.pidfd),
         }
     }
 
-    /// Add every live process still provably owned by this PTY. Ordinary jobs
-    /// are owned by the pinned session id or a parent chain rooted at the
-    /// retained leader. A reparented `setsid()` descendant — including one that
-    /// scrubbed its environment with `env -i` — is owned when it still holds the
-    /// inherited capability descriptor. Every candidate is read, opened as a
-    /// pidfd, and read again before its stable handle is retained across later
-    /// rescans.
+    /// Add every live process that closes with this PTY (see
+    /// [`closes_with_pty`]). Every candidate is read, opened as a pidfd, and
+    /// read again before its stable handle is retained across later rescans.
     pub(crate) fn refresh_owned_processes(
         &self,
         owned: &mut Vec<OwnedSessionMember>,
@@ -306,7 +291,7 @@ impl LinuxProcessIdentity {
                 || owned
                     .iter()
                     .any(|member| member.pid == pid && member.start_ticks == before.start_ticks)
-                || !process_belongs_to_pty(pid, self.pid, self.capability.as_ref(), &snapshot)
+                || !closes_with_pty(pid, self.pid, self.foreground, &snapshot)
             {
                 continue;
             }
@@ -318,7 +303,7 @@ impl LinuxProcessIdentity {
             };
             if before.start_ticks == after.start_ticks
                 && after.state != b'Z'
-                && process_belongs_to_pty(pid, self.pid, self.capability.as_ref(), &snapshot)
+                && closes_with_pty(pid, self.pid, self.foreground, &snapshot)
             {
                 discovered.push(OwnedSessionMember {
                     pid,

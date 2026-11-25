@@ -23,8 +23,8 @@ pub(crate) type EndpointSpawnOverride = Box<
 impl App {
     /// Start pane `id`'s endpoint, spawning with `secret` as its password.
     ///
-    /// The host is resolved here, from in-memory records; the PTY spawn and
-    /// its capability handshake run on the spawn worker, and the pane keeps
+    /// The host is resolved here, from in-memory records; the PTY spawn runs
+    /// on the spawn worker, and the pane keeps
     /// its current text until [`Self::install_endpoint_spawn`] attaches the
     /// result. The secret stays in its wipe-on-drop custody until the worker
     /// has sealed it into the sshpass `memfd`.

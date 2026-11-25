@@ -390,6 +390,11 @@ pub(crate) struct App {
     /// reference and makes every exit (button, Escape, scrim) fan into one
     /// `ConfirmDialogEvent::Resolved(cause)`.
     pub(crate) confirm_state: enzui_core::confirm::ConfirmState,
+    /// A close held until the user confirms ending a running command.
+    pub(crate) pending_running_close: Option<crate::running_close::PendingRunningClose>,
+    pub(crate) running_close_confirm_state: enzui_core::confirm::ConfirmState,
+    /// Set only while a confirmed close is dispatched again.
+    pub(crate) running_close_confirmed: bool,
 
     // ---- Pane rename state ---------------------------------------------
     /// In-progress pane rename: the draft title being typed. `None` when no

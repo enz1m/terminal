@@ -8,7 +8,7 @@ use super::*;
 #[test]
 #[cfg(target_os = "linux")]
 fn start_time_identity_state_seam_is_calibrated() {
-    let identity = LinuxProcessIdentity::capture(std::process::id(), None, None)
+    let identity = LinuxProcessIdentity::capture(std::process::id(), None)
         .expect("the test process must have a pidfd and proc stat");
     assert_eq!(
         process_start_ticks(identity.pid).expect("read current process start time"),

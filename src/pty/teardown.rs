@@ -57,7 +57,7 @@ pub(crate) struct PtyTeardownOutcome {
     /// unjoined writer is debt: queued input and the write handle are still
     /// alive somewhere.
     pub(crate) writer_joined: bool,
-    /// Both pty halves, the cancellation pipe and both `/proc` handoffs were
+    /// Both pty halves, the cancellation pipe and the password `/proc` handoff were
     /// released.
     pub(crate) descriptors_released: bool,
     /// A bounded phase ended on its deadline rather than on its condition.
@@ -205,7 +205,7 @@ impl TeardownToken {
 /// This owns the retiring [`PtySession`] itself, so the pinned leader identity
 /// and pidfd, every discovered descendant pidfd, the reap handshake, all three
 /// worker handles, the input queue, both pty halves, the cancellation pipe and
-/// both `/proc` handoffs all stay owned, together with the reservation that
+/// the password `/proc` handoff all stay owned, together with the reservation that
 /// keeps this teardown charged against capacity. The outcome is metadata about
 /// the last pass; this value is the authority that can still finish the work.
 pub(crate) struct PtyTeardownDebtOwner {

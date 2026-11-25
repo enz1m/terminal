@@ -96,26 +96,22 @@ impl App {
     /// `alert` is deliberately left FALSE: both of these are Escape-closable
     /// (an alert refuses Escape), and cancelling by Escape is the behaviour
     /// `declining_delete_ssh_host_preserves_the_host` pins.
-    pub(crate) fn confirm_overlay(
-        &self,
+    pub(crate) fn confirm_overlay<'a>(
+        &'a self,
+        state: &'a enzui_core::confirm::ConfirmState,
         title: &str,
         body_text: &str,
         confirm_label: &str,
         on_event: fn(ConfirmDialogEvent) -> Message,
-    ) -> Element<'_, Message> {
+    ) -> Element<'a, Message> {
         // Host over an empty base so the scrim covers the whole window and
         // Escape / a scrim press funnel through `on_event` (-> cancel).
         let base: Element<'_, Message> =
             Space::new().width(Length::Fill).height(Length::Fill).into();
-        enz_confirm_dialog(
-            title.to_owned(),
-            body_text.to_owned(),
-            &self.confirm_state,
-            on_event,
-        )
-        .confirm_label(confirm_label.to_owned())
-        .cancel_label(crate::i18n::label("Cancel"))
-        .destructive(true)
-        .into_host(base)
+        enz_confirm_dialog(title.to_owned(), body_text.to_owned(), state, on_event)
+            .confirm_label(confirm_label.to_owned())
+            .cancel_label(crate::i18n::label("Cancel"))
+            .destructive(true)
+            .into_host(base)
     }
 }

@@ -19,6 +19,17 @@ impl App {
         if !self.accepts_operation_completion(&message) {
             return Task::none();
         }
+        if self.pending_running_close.is_some()
+            && matches!(
+                &message,
+                Message::WindowChromeKey(..) | Message::PaneInput(..) | Message::PanePointer(..)
+            )
+        {
+            return Task::none();
+        }
+        if self.hold_running_close(&message) {
+            return Task::none();
+        }
         if (self.pending_ssh_host_save.is_some() || self.ssh_host_save_uncertain)
             && matches!(
                 &message,
@@ -464,6 +475,7 @@ impl App {
             Message::ConfirmDeleteSshHost(accepted) => {
                 return self.reduce29_confirm_delete_ssh_host_2(accepted);
             }
+            Message::RunningCloseEvent(event) => return self.running_close_event(event),
             Message::ConfirmDeleteSshHostEvent(event) => {
                 return self.reduce29_confirm_delete_ssh_host_event_3(event);
             }

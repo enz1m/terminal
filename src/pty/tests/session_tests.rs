@@ -158,7 +158,7 @@ fn reducer_submission_returns_quickly_while_a_resistant_owner_stays_charged() {
 #[test]
 #[cfg(target_os = "linux")]
 fn reused_session_number_cannot_authorize_signals() {
-    let identity = LinuxProcessIdentity::capture(std::process::id(), None, None)
+    let identity = LinuxProcessIdentity::capture(std::process::id(), None)
         .expect("the test process must have a pidfd and proc stat");
     let signals = AtomicU64::new(0);
     let state = identity.state_with(|_| Ok(identity.start_ticks.saturating_add(1)));
@@ -173,15 +173,13 @@ fn reused_session_number_cannot_authorize_signals() {
     assert_eq!(signals.load(Ordering::Relaxed), 0);
 }
 
-/// Dropping a live PTY owns its leader, job-control group, setsid descendant,
-/// and both worker threads, but not an unrelated process opening that slave.
-/// Sabotage by removing the capability check from `process_belongs_to_pty`:
-/// shutdown kills the path-only process and its positive liveness witness
-/// fails, while RAII still reaps the fixture. Removing the reader cancellation
-/// signal instead strands join on that surviving holder until its bounded sleep.
+/// Dropping a live PTY hangs up its leader and foreground job, escalating
+/// only for those that outlive SIGHUP, and joins both worker threads. Background
+/// jobs, HUP-ignoring children, `setsid()` descendants and an unrelated opener
+/// of the slave keep running.
 #[test]
 #[cfg(target_os = "linux")]
-fn dropping_live_session_reaps_group_and_joins_workers_within_budget() {
+fn dropping_live_session_closes_foreground_work_and_spares_detached_processes() {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let marker = format!(
         "enzui-pty-drop-{}-{}",
@@ -189,101 +187,77 @@ fn dropping_live_session_reaps_group_and_joins_workers_within_budget() {
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     let _cleanup = MarkedProcessCleanup(marker.clone());
-    let session = PtySession::spawn_shutdown_probe("drop-probe", &marker)
+    let mut session = PtySession::spawn_shutdown_probe("drop-probe", &marker)
         .expect("the real PTY shutdown probe must spawn");
     let leader = session.process_id().expect("Unix PTY child has a pid");
     let witnesses = session.worker_witnesses();
 
+    let named = |suffix: &str| {
+        let wanted = format!("{marker}-{suffix}");
+        all_marked_pids(&marker).into_iter().find(|pid| {
+            std::fs::read(format!("/proc/{pid}/cmdline"))
+                .is_ok_and(|cmdline| String::from_utf8_lossy(&cmdline).contains(&wanted))
+        })
+    };
     let live_deadline = Instant::now() + Duration::from_secs(2);
-    let (job, escaped) = loop {
-        let pids = all_marked_pids(&marker);
-        let job = pids.iter().copied().find(|pid| {
-            *pid != leader
-                && process_session_of(*pid) == Some(leader)
-                && process_group_of(*pid) != Some(leader)
-        });
-        let escaped = pids
-            .iter()
-            .copied()
-            .find(|pid| *pid != leader && process_session_of(*pid) != Some(leader));
-        if pids.contains(&leader)
-            && let (Some(job), Some(escaped)) = (job, escaped)
-        {
-            break (job, escaped);
+    let [foreground, plain, nohup, background, escaped] = loop {
+        let found = ["foreground", "plain", "nohup", "background", "scrubbed"].map(named);
+        if let [Some(a), Some(b), Some(c), Some(d), Some(e)] = found {
+            break [a, b, c, d, e];
         }
         assert!(
             Instant::now() < live_deadline,
-            "fixture must expose its leader, job-control child, and setsid child; got {pids:?}"
+            "fixture must expose every child; got {found:?}"
         );
         thread::sleep(Duration::from_millis(10));
     };
-    assert_eq!(
-        process_group_of(leader),
-        Some(leader),
-        "PTY child must be the process-group leader"
-    );
-    assert_ne!(
-        process_group_of(job),
-        Some(leader),
-        "job-control fixture must use another process group"
-    );
-    assert_eq!(process_session_of(job), Some(leader));
-    assert_ne!(
-        process_session_of(escaped),
-        Some(leader),
-        "env-scrubbed setsid descendant must have escaped the leader's session"
-    );
-    assert_ne!(
-        process_parent_of(escaped),
-        Some(leader),
-        "double-forked setsid fixture must require exact PTY-fd ownership"
-    );
+    assert_eq!(process_group_of(leader), Some(leader));
+    for pid in [foreground, plain, nohup, background] {
+        assert_eq!(process_session_of(pid), Some(leader));
+    }
+    assert_eq!(process_group_of(plain), Some(leader));
+    assert_eq!(process_group_of(nohup), Some(leader));
+    assert_ne!(process_group_of(foreground), Some(leader));
+    assert_ne!(process_group_of(background), Some(leader));
+    assert_ne!(process_session_of(escaped), Some(leader));
+    let foreground_group = session
+        .master
+        .as_ref()
+        .and_then(|master| master.process_group_leader())
+        .and_then(|pid| u32::try_from(pid).ok());
+    assert_eq!(foreground_group, process_group_of(foreground));
 
     let tty = session
         .tty_name_for_tests()
         .expect("Linux PTY must expose its slave path");
     let mut unrelated =
         UnrelatedPtyHolder::spawn(&tty, &marker).expect("spawn unrelated same-user PTY holder");
-    let unrelated_pid = unrelated.pid();
     assert!(
-        process_has_open_path(unrelated_pid, &tty),
+        process_has_open_path(unrelated.pid(), &tty),
         "unrelated process never opened the PTY slave"
-    );
-    assert!(
-        !session.capability_held_by(unrelated_pid),
-        "an unrelated opener of the slave must never hold the capability; it holds {:#?}",
-        unrelated.descriptors()
-    );
-    assert!(
-        session.capability_held_by(escaped),
-        "the env-scrubbed setsid descendant must still hold the inherited \
-         capability descriptor"
-    );
-    let scrubbed_environment =
-        std::fs::read(format!("/proc/{escaped}/environ")).expect("read descendant environment");
-    assert!(
-        !String::from_utf8_lossy(&scrubbed_environment).contains("ENZUI"),
-        "the fixture descendant must have scrubbed every inherited marker string"
     );
 
     let owned = session.owned_process_ids();
-    assert!(owned.contains(&leader), "leader missing from ownership set");
-    assert!(
-        owned.contains(&job),
-        "job-control child missing from ownership set"
-    );
-    assert!(
-        owned.contains(&escaped),
-        "setsid child retaining the PTY slave missing from ownership set"
-    );
+    for (kind, pid) in [
+        ("leader", leader),
+        ("foreground", foreground),
+        ("plain", plain),
+    ] {
+        assert!(owned.contains(&pid), "{kind} {pid} missing from {owned:?}");
+    }
+    for (kind, pid) in [
+        ("nohup", nohup),
+        ("background", background),
+        ("setsid", escaped),
+        ("unrelated", unrelated.pid()),
+    ] {
+        assert!(!owned.contains(&pid), "{kind} {pid} owned: {owned:?}");
+    }
+
     let token = session.teardown_token();
     let started = Instant::now();
     drop(session);
     let submitted = started.elapsed();
-    assert!(
-        unrelated.is_alive(),
-        "closing the PTY killed an unrelated same-user slave-fd holder"
-    );
     // Drop may run on the reducer, so it hands exact custody over instead of
     // signalling, waiting and joining in place.
     assert!(
@@ -291,7 +265,7 @@ fn dropping_live_session_reaps_group_and_joins_workers_within_budget() {
         "a fallback drop must transfer custody rather than tear down in place: {submitted:?}"
     );
 
-    // Shared with every parallel test's teardown, each allowed its TERM grace.
+    // Shared with every parallel test's teardown, each allowed its grace.
     let settle_deadline = Instant::now() + Duration::from_secs(30);
     while teardown_supervisor().holds_token(token) && Instant::now() < settle_deadline {
         thread::sleep(Duration::from_millis(10));
@@ -302,24 +276,32 @@ fn dropping_live_session_reaps_group_and_joins_workers_within_budget() {
     );
     let elapsed = started.elapsed();
 
+    let alive = |pid: u32| std::path::Path::new(&format!("/proc/{pid}")).exists();
     let gone_deadline = Instant::now() + Duration::from_secs(1);
-    while [leader, job, escaped]
-        .iter()
-        .any(|pid| std::path::Path::new(&format!("/proc/{pid}")).exists())
-        && Instant::now() < gone_deadline
-    {
+    while [leader, foreground, plain].into_iter().any(alive) && Instant::now() < gone_deadline {
         thread::sleep(Duration::from_millis(10));
     }
     for (kind, pid) in [
         ("leader", leader),
-        ("job", job),
-        ("setsid descendant", escaped),
+        ("foreground", foreground),
+        ("plain", plain),
+    ] {
+        assert!(!alive(pid), "the {kind} {pid} survived its PTY session");
+    }
+    for (kind, pid) in [
+        ("nohup", nohup),
+        ("background", background),
+        ("setsid", escaped),
     ] {
         assert!(
-            !std::path::Path::new(&format!("/proc/{pid}")).exists(),
-            "the marked {kind} {pid} survived its PTY session"
+            alive(pid),
+            "closing the PTY killed the {kind} process {pid}"
         );
     }
+    assert!(
+        unrelated.is_alive(),
+        "closing the PTY killed an unrelated same-user slave-fd holder"
+    );
     assert!(
         elapsed <= Duration::from_secs(12),
         "owned shutdown exceeded its measured ceiling: {elapsed:?}"

@@ -82,41 +82,37 @@ pub(crate) fn process_start_ticks(pid: u32) -> std::io::Result<u64> {
     Ok(read_process_stat(pid)?.start_ticks)
 }
 
+/// Whether closing the PTY ends `pid`: the leader, and members of its session
+/// in the leader's or the foreground process group that do not ignore SIGHUP.
+///
+/// Background jobs follow the shell's own hangup rules, so disowned jobs
+/// survive, as do `nohup` commands and processes that left with `setsid()`.
 #[cfg(target_os = "linux")]
-pub(super) fn process_belongs_to_pty(
+pub(super) fn closes_with_pty(
     pid: u32,
     leader: u32,
-    capability: Option<&PtyCapability>,
+    foreground: Option<u32>,
     snapshot: &HashMap<u32, LinuxProcStat>,
 ) -> bool {
     let Some(candidate) = snapshot.get(&pid) else {
         return false;
     };
-    if candidate.session == leader || pid == leader {
-        return true;
-    }
-    // A reparented setsid descendant is discoverable by neither PPID nor SID,
-    // and `env -i` erases any inherited marker string. The capability it cannot
-    // shed is the inherited descriptor itself. This process is excluded: it
-    // holds the parent side of the same FIFO.
-    if pid != std::process::id() && capability.is_some_and(|capability| capability.is_held_by(pid))
-    {
-        return true;
-    }
-    let mut parent = candidate.parent;
-    for _ in 0..snapshot.len() {
-        if parent == leader {
-            return true;
-        }
-        let Some(next) = snapshot.get(&parent) else {
-            return false;
-        };
-        if next.parent == parent {
-            return false;
-        }
-        parent = next.parent;
-    }
-    false
+    pid == leader
+        || (candidate.session == leader
+            && (candidate.process_group == leader || Some(candidate.process_group) == foreground)
+            && !ignores_hangup(pid))
+}
+
+/// An unreadable mask counts as not ignoring, so the process still closes.
+#[cfg(target_os = "linux")]
+fn ignores_hangup(pid: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/status")).is_ok_and(|status| {
+        status
+            .lines()
+            .find_map(|line| line.strip_prefix("SigIgn:"))
+            .and_then(|mask| u64::from_str_radix(mask.trim(), 16).ok())
+            .is_some_and(|mask| mask & (1 << (rustix::process::Signal::HUP.as_raw() - 1)) != 0)
+    })
 }
 
 #[cfg(all(test, target_os = "linux"))]

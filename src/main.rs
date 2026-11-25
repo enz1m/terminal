@@ -252,6 +252,8 @@ mod reduce_batch8;
 mod reduce_batch9;
 #[path = "app_parts/reflow_subscription.rs"]
 mod reflow_subscription;
+#[path = "app_parts/running_close.rs"]
+mod running_close;
 #[path = "app_parts/save_tasks.rs"]
 mod save_tasks;
 #[path = "app_parts/scroll_active.rs"]

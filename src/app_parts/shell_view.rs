@@ -168,10 +168,11 @@ impl App {
         // pending flag is raised and stacks above the manager that raised it.
         // The stack root and child 0 stay stable; the confirmation is appended
         // as child 1 only while present, so no inert placeholder is retained.
-        let layers = if self.pending_delete_ssh_host.is_some() {
+        let mut layers = if self.pending_delete_ssh_host.is_some() {
             vec![
                 modal_base,
                 self.confirm_overlay(
+                    &self.confirm_state,
                     crate::i18n::label(CONFIRM_DELETE_SSH_TITLE),
                     crate::i18n::label(CONFIRM_DELETE_SSH_BODY),
                     crate::i18n::label("Delete"),
@@ -184,6 +185,7 @@ impl App {
             // placeholder in every normal frame.
             vec![modal_base]
         };
+        layers.extend(self.running_close_overlay(self.main_window));
         let presentation: Element<'_, Message> = iced::widget::stack(layers)
             .width(Length::Fill)
             .height(Length::Fill)

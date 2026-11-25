@@ -51,8 +51,6 @@ use std::io::{Read, Write};
 use std::num::NonZeroU64;
 #[cfg(target_os = "linux")]
 use std::os::fd::{AsRawFd, RawFd};
-#[cfg(all(test, target_os = "linux"))]
-use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::Condvar;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -72,12 +70,6 @@ use rustix::fd::AsFd;
 use crate::emulator;
 use crate::model::{SshAuthMode, SshHostRecord, TranscriptRow};
 use crate::shell_history::BASH_PROMPT_COMMAND;
-
-#[cfg(target_os = "linux")]
-#[path = "pty_capability.rs"]
-mod capability;
-#[cfg(target_os = "linux")]
-use capability::{PtyCapability, wrap_with_capability};
 
 /// Default grid geometry we ask the child shell to render into before the first
 /// real resize from the measured cell size.
@@ -118,6 +110,8 @@ pub(crate) const MAX_INPUT_QUEUE_CHUNKS: usize = 8;
 /// against the same total.
 pub(crate) const MAX_INPUT_QUEUE_BYTES: usize = 4 * MAX_INPUT_CHUNK_BYTES;
 
+/// Grace period for a PTY process session to exit after hangup.
+const SHUTDOWN_HANGUP_GRACE: Duration = Duration::from_millis(250);
 /// Grace period for a PTY process session to handle an orderly termination.
 const SHUTDOWN_TERM_GRACE: Duration = Duration::from_millis(250);
 /// Maximum wait for captured descendants to disappear after an uncatchable signal.
@@ -281,10 +275,6 @@ pub(crate) struct PtySession {
     // teardown and both worker joins.
     #[cfg(target_os = "linux")]
     _password_secret: Option<PasswordSecret>,
-    // A timed-out child can still open its /proc handoff path; reserve the fd number
-    // without granting ownership.
-    #[cfg(target_os = "linux")]
-    _capability_handoff: Option<Arc<std::fs::File>>,
     #[cfg(test)]
     final_freeze_scans: Arc<AtomicU64>,
     #[cfg(test)]
@@ -312,7 +302,7 @@ pub(crate) use teardown::{
 
 #[path = "pty/exit.rs"]
 mod exit;
-use exit::process_belongs_to_pty;
+use exit::closes_with_pty;
 #[path = "pty/session_teardown.rs"]
 mod session_teardown;
 #[path = "pty/spawn_shell.rs"]
@@ -473,6 +463,22 @@ impl PtySession {
     /// As [`Self::write`].
     pub(crate) fn write_typed(&self, bytes: &[u8]) -> Result<(), PtyError> {
         self.write_as(bytes, InputAdmission::Typed)
+    }
+
+    /// Whether a job other than the session's own process owns the terminal.
+    pub(crate) fn has_foreground_job(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            self.master
+                .as_ref()
+                .and_then(|master| master.process_group_leader())
+                .and_then(|pid| u32::try_from(pid).ok())
+                .is_some_and(|group| group != self.process_identity.pid)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            false
+        }
     }
 
     fn write_as(&self, bytes: &[u8], admission: InputAdmission) -> Result<(), PtyError> {

@@ -16,6 +16,13 @@ impl App {
         use enzui_core::window_lifecycle::LifecycleAction;
 
         let intent = self.intentional_closes.remove(&id);
+        if self
+            .pending_running_close
+            .as_ref()
+            .is_some_and(|pending| pending.window == Some(id))
+        {
+            self.pending_running_close = None;
+        }
         if self.focused_window == Some(id) {
             self.focused_window = None;
             self.invalidate_sidebar();
