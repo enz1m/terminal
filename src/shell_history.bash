@@ -11,7 +11,7 @@ if [[ ${__enzui_shell_pid-} != "$$" ]]; then
         for ((i = 0; i < ${#command}; i++)); do
             builtin printf -v hex '%s%02x' "$hex" "'${command:i:1}"
         done
-        builtin printf '\033]777;enzui-command;%s\007' "$hex"
+        builtin printf '\033]777;enzui-command;@ENZUI_NONCE@;%s\007' "$hex"
     }
     __enzui_report_cwd() {
         builtin local LC_ALL=C path="$PWD" hex='' i || builtin return 0
@@ -19,7 +19,7 @@ if [[ ${__enzui_shell_pid-} != "$$" ]]; then
         for ((i = 0; i < ${#path}; i++)); do
             builtin printf -v hex '%s%02x' "$hex" "'${path:i:1}"
         done
-        builtin printf '\033]777;enzui-cwd;localhost;%s\007' "$hex"
+        builtin printf '\033]777;enzui-cwd;@ENZUI_NONCE@;localhost;%s\007' "$hex"
     }
     # PS0 runs only after Bash accepts a command, never for a program's stdin.
     PS0='$(builtin declare -F __enzui_command_start >/dev/null && __enzui_command_start)'${PS0-}

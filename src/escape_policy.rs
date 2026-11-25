@@ -313,6 +313,8 @@ pub(crate) fn bounded_grapheme(cluster: &str) -> &str {
 pub(crate) enum PasteRefusal {
     /// The payload exceeds [`MAX_PASTE_BYTES`].
     TooLarge,
+    /// A multi-line command would run line by line without bracketed paste.
+    MultiLineCommand,
 }
 
 impl PasteRefusal {
@@ -320,6 +322,9 @@ impl PasteRefusal {
     pub(crate) fn user_summary(self) -> &'static str {
         match self {
             Self::TooLarge => "Paste refused: the clipboard holds more text than one paste allows.",
+            Self::MultiLineCommand => {
+                "Paste refused: this command has several lines and the shell would run each one."
+            }
         }
     }
 }

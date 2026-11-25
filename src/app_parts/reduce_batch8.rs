@@ -42,10 +42,9 @@ impl App {
         if let Some((session_id, pane_id, bracketed)) = target
             && !command.is_empty()
         {
-            match escape_policy::normalized_paste(&command) {
-                Ok(payload) if payload.is_empty() => {}
-                Ok(payload) => {
-                    let bytes = paste_bytes(&payload, bracketed);
+            match crate::shell_status::history_paste_bytes(&command, bracketed) {
+                Ok(bytes) if bytes.is_empty() => {}
+                Ok(bytes) => {
                     self.exclude_pinned_input(&pane_id);
                     self.write_pane_pty(&session_id, &pane_id, &bytes);
                 }

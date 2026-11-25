@@ -6,6 +6,8 @@
 pub(crate) const BASH_PROMPT_COMMAND: &str = include_str!("shell_history.bash");
 pub(crate) const MAX_COMMAND_BYTES: usize = 4096;
 pub(crate) const HISTORY_DISABLED: &str = "enzui-history-disabled";
+/// Stands for the session nonce in shell scripts until a spawn renders them.
+pub(crate) const NONCE_PLACEHOLDER: &str = "@ENZUI_NONCE@";
 
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) enum ShellEvent {
@@ -48,6 +50,31 @@ pub(crate) fn command_row_id(key: u64) -> String {
 pub(crate) fn is_command_row_id(id: &str) -> bool {
     id.strip_prefix("shell-command-")
         .is_some_and(|key| key.parse::<u64>().is_ok())
+}
+
+/// A fresh per-session secret that every integration report must carry.
+pub(crate) fn new_nonce() -> Option<String> {
+    let mut bytes = [0_u8; 16];
+    let filled = rustix::rand::getrandom(&mut bytes, rustix::rand::GetRandomFlags::empty()).ok()?;
+    (filled == bytes.len()).then(|| crate::session_store::hex(&bytes))
+}
+
+pub(crate) fn render_nonce(template: &str, nonce: &str) -> String {
+    template.replace(NONCE_PLACEHOLDER, nonce)
+}
+
+/// The integration fields of an OSC 777 report that carries `nonce`, without
+/// it. Program output cannot know the nonce, so it cannot forge history,
+/// directory or integration state.
+pub(crate) fn authenticated_osc(fields: &[String], nonce: Option<&str>) -> Option<Vec<String>> {
+    let [name, presented, rest @ ..] = fields else {
+        return None;
+    };
+    (name.starts_with("enzui-") && Some(presented.as_str()) == nonce).then(|| {
+        std::iter::once(name.clone())
+            .chain(rest.iter().cloned())
+            .collect()
+    })
 }
 
 pub(crate) fn history_disabled_from_osc(fields: &[String]) -> bool {

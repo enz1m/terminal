@@ -23,14 +23,14 @@ function __enzui_preexec --on-event fish_preexec
     builtin set -l hex (__enzui_hex "$argv[1]" | builtin string collect)
     builtin string match -qr '^[0-9a-fA-F]+$' -- "$hex"; or builtin return
     builtin test (builtin string length -- "$hex") -le 8192; or builtin return
-    builtin printf '\033]777;enzui-command;%s\007' "$hex"
+    builtin printf '\033]777;enzui-command;@ENZUI_NONCE@;%s\007' "$hex"
 end
 function __enzui_report_cwd
     builtin functions --query __enzui_hex; or builtin return 1
     builtin set -l hex (__enzui_hex "$PWD" | builtin string collect)
     builtin string match -qr '^[0-9a-fA-F]+$' -- "$hex"; or builtin return
     builtin test (builtin string length -- "$hex") -le 8192; or builtin return
-    builtin printf '\033]777;enzui-cwd;localhost;%s\007' "$hex"
+    builtin printf '\033]777;enzui-cwd;@ENZUI_NONCE@;localhost;%s\007' "$hex"
 end
 function __enzui_prompt --on-event fish_prompt
     builtin set -l result $status

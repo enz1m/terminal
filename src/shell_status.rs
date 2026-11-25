@@ -59,3 +59,46 @@ pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
 /// paste, `ESC [ 201 ~` closes it.
 pub(crate) const BRACKETED_PASTE_START: &[u8] = b"\x1b[200~";
 pub(crate) const BRACKETED_PASTE_END: &[u8] = b"\x1b[201~";
+
+/// The bytes that put a history entry on the shell's input line, unexecuted.
+///
+/// Empty when the entry normalises to nothing.
+///
+/// # Errors
+///
+/// Refuses an oversized entry, and a multi-line one unless bracketed paste is
+/// engaged, because each raw newline would run the line before it.
+pub(crate) fn history_paste_bytes(
+    command: &str,
+    bracketed: bool,
+) -> Result<Vec<u8>, crate::escape_policy::PasteRefusal> {
+    let payload = crate::escape_policy::normalized_paste(command)?;
+    if payload.is_empty() {
+        return Ok(Vec::new());
+    }
+    if payload.contains('\n') && !bracketed {
+        return Err(crate::escape_policy::PasteRefusal::MultiLineCommand);
+    }
+    Ok(paste_bytes(&payload, bracketed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multi_line_history_entries_never_reach_an_unbracketed_shell() {
+        use crate::escape_policy::PasteRefusal;
+        for command in ["true\nrm -rf ~", "true\rrm -rf ~", "true\r\nrm -rf ~"] {
+            assert_eq!(
+                history_paste_bytes(command, false),
+                Err(PasteRefusal::MultiLineCommand)
+            );
+            let bracketed = history_paste_bytes(command, true).unwrap();
+            assert!(bracketed.starts_with(BRACKETED_PASTE_START));
+            assert!(bracketed.ends_with(BRACKETED_PASTE_END));
+        }
+        assert_eq!(history_paste_bytes("ls -l", false).unwrap(), b"ls -l");
+        assert!(history_paste_bytes("\u{7}", false).unwrap().is_empty());
+    }
+}

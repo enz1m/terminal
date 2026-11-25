@@ -310,3 +310,14 @@ mod native {
         }
     }
 }
+
+#[test]
+fn history_labels_show_characters_that_hide_or_reorder_the_command() {
+    let shown =
+        crate::history_view::visible_command("ls\u{202e}txt.exe\u{2028}\u{200b}\u{1b}\u{7f}");
+    assert_eq!(shown, "ls<U+202E>txt.exe<U+2028><U+200B>\u{241b}\u{2421}");
+    assert_eq!(
+        crate::history_view::visible_command("café 👩\u{200d}💻"),
+        "café 👩\u{200d}💻"
+    );
+}

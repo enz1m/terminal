@@ -250,13 +250,18 @@ impl PtySession {
             .allocate()
             .ok_or(PtyError::InputAuthorityExhausted)?;
 
+        let nonce = crate::shell_history::new_nonce();
         #[cfg(unix)]
         let (cmd, shell_startup, startup_warning) = {
             let mut cmd = cmd;
             let local_request = cmd.get_env("TERM_PROGRAM")
                 == Some(std::ffi::OsStr::new("enzui-terminal"))
                 && cmd.get_argv().len() == 1;
-            let (startup, warning) = match crate::shell_history::local::prepare(&mut cmd) {
+            let prepared = match nonce.as_deref() {
+                Some(nonce) => crate::shell_history::local::prepare(&mut cmd, nonce),
+                None => Err(std::io::Error::other("no shell integration nonce")),
+            };
+            let (startup, warning) = match prepared {
                 Ok(Some(startup)) => (Some(startup), None),
                 Ok(None) => (
                     None,
@@ -286,6 +291,10 @@ impl PtySession {
         let history_source = (local_protocol || remote_protocol) && secret.is_none();
         #[cfg(unix)]
         let history_source = history_source && startup_warning.is_none();
+        let cmd = match nonce.as_deref() {
+            Some(nonce) => render_integration_nonce(cmd, nonce),
+            None => cmd,
+        };
         let secret_delivery = secret.is_some();
         #[cfg(all(test, target_os = "linux"))]
         let mut secret = secret;
@@ -481,6 +490,7 @@ impl PtySession {
         let mut initial_screen = emulator::Screen::new(Arc::clone(&dirty));
         initial_screen.set_max_scrollback(scrollback_lines);
         initial_screen.pinned_capture.supported(history_source);
+        initial_screen.set_shell_nonce(nonce);
         #[cfg(unix)]
         // Without the integration the shell is just a shell: history is
         // off, and nothing is written into the terminal about it.
@@ -789,4 +799,26 @@ impl PtySession {
             final_freeze_stable,
         })
     }
+}
+
+/// Gives the integration scripts carried in `cmd`'s arguments and
+/// `PROMPT_COMMAND` this session's nonce.
+fn render_integration_nonce(mut cmd: CommandBuilder, nonce: &str) -> CommandBuilder {
+    let placeholder = crate::shell_history::NONCE_PLACEHOLDER;
+    for arg in cmd.get_argv_mut() {
+        if let Some(text) = arg.to_str()
+            && text.contains(placeholder)
+        {
+            *arg = crate::shell_history::render_nonce(text, nonce).into();
+        }
+    }
+    if let Some(prompt) = cmd
+        .get_env("PROMPT_COMMAND")
+        .and_then(|value| value.to_str())
+        .filter(|value| value.contains(placeholder))
+        .map(|value| crate::shell_history::render_nonce(value, nonce))
+    {
+        cmd.env("PROMPT_COMMAND", prompt);
+    }
+    cmd
 }

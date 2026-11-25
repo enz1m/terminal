@@ -200,6 +200,11 @@ impl Screen {
                 }
             }
             scan::Scanned::Rxvt(fields) => {
+                let Some(fields) =
+                    crate::shell_history::authenticated_osc(&fields, self.shell_nonce.as_deref())
+                else {
+                    return;
+                };
                 let mut capture = std::mem::take(&mut self.pinned_capture);
                 capture.rxvt(&fields, self, self.max_scrollback);
                 self.pinned_capture = capture;

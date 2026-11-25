@@ -8,22 +8,30 @@ use std::{
     sync::{Arc, atomic::AtomicU64},
 };
 
+const NONCE: &str = "0123456789abcdef0123456789abcdef";
+
 fn screen() -> Screen {
-    Screen::new(Arc::new(AtomicU64::new(0)))
+    let mut screen = Screen::new(Arc::new(AtomicU64::new(0)));
+    screen.set_shell_nonce(Some(NONCE.into()));
+    screen
 }
 fn report(path: &[u8]) -> Vec<u8> {
     format!(
-        "\x1b]777;enzui-cwd;localhost;{}\x07",
+        "\x1b]777;enzui-cwd;{NONCE};localhost;{}\x07",
         crate::session_store::hex(path)
     )
     .into_bytes()
 }
-fn accepted() -> Vec<u8> {
+fn command_report(nonce: Option<&str>, command: &[u8]) -> Vec<u8> {
+    let nonce = nonce.map(|nonce| format!("{nonce};")).unwrap_or_default();
     format!(
-        "\x1b]777;enzui-command;{}\x07\x1b]133;D;0\x07",
-        crate::session_store::hex(b"echo accepted")
+        "\x1b]777;enzui-command;{nonce}{}\x07\x1b]133;D;0\x07",
+        crate::session_store::hex(command)
     )
     .into_bytes()
+}
+fn accepted() -> Vec<u8> {
+    command_report(Some(NONCE), b"echo accepted")
 }
 fn malformed() -> Vec<Vec<u8>> {
     [
@@ -40,7 +48,10 @@ fn malformed() -> Vec<Vec<u8>> {
         "enzui-cwd;localhost;２f",
     ]
     .into_iter()
-    .map(|fields| format!("\x1b]777;{fields}\x07").into_bytes())
+    .map(|fields| {
+        let fields = fields.replacen("enzui-cwd", &format!("enzui-cwd;{NONCE}"), 1);
+        format!("\x1b]777;{fields}\x07").into_bytes()
+    })
     .chain(std::iter::once(report(&[b'/'; MAX_PATH_BYTES + 1])))
     .collect()
 }
@@ -141,11 +152,49 @@ fn child_osc_seven_keeps_its_existing_semantics_and_order() {
         effects.generated_cwd.unwrap().path(),
         Path::new("/generated")
     );
-    screen.process(b"\x1b]777;enzui-history-disabled\x07");
+    screen.process(format!("\x1b]777;enzui-history-disabled;{NONCE}\x07").as_bytes());
     screen.process(&report(b"/refused"));
     screen.process(child);
     let effects = screen.take_effects();
     assert!(effects.cwd.is_none() && effects.generated_cwd.is_none());
+}
+
+#[test]
+fn integration_reports_without_the_session_nonce_are_ignored() {
+    let mut screen = screen();
+    let forged_cwd = format!(
+        "\x1b]777;enzui-cwd;localhost;{}\x07",
+        crate::session_store::hex(b"/forged")
+    );
+    screen.process(forged_cwd.as_bytes());
+    screen.process(&command_report(None, b"rm -rf ~"));
+    screen.process(&command_report(Some(&NONCE.replace('0', "1")), b"rm -rf ~"));
+    screen.process(b"\x1b]777;enzui-history-disabled\x07");
+    let effects = screen.take_effects();
+    assert!(effects.generated_cwd.is_none());
+    assert!(effects.commands_started.is_empty());
+    assert!(
+        effects
+            .shell_events
+            .iter()
+            .all(|event| !matches!(event, crate::shell_history::ShellEvent::Started { .. }))
+    );
+
+    screen.process(&report(b"/trusted"));
+    screen.process(&accepted());
+    let effects = screen.take_effects();
+    assert_eq!(effects.generated_cwd.unwrap().path(), Path::new("/trusted"));
+    assert_eq!(
+        effects.commands_started.into_iter().collect::<Vec<_>>(),
+        vec!["echo accepted".to_owned()]
+    );
+
+    let mut unprotected = Screen::new(Arc::new(AtomicU64::new(0)));
+    unprotected.process(&accepted());
+    unprotected.process(&report(b"/trusted"));
+    let effects = unprotected.take_effects();
+    assert!(effects.commands_started.is_empty());
+    assert!(effects.generated_cwd.is_none());
 }
 
 #[test]

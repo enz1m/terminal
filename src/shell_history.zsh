@@ -6,7 +6,7 @@ __enzui_preexec() {
     for ((i = 1; i <= ${#command}; i++)); do
         builtin printf -v hex '%s%02x' "$hex" "'${command[i]}"
     done
-    builtin printf '\033]777;enzui-command;%s\007' "$hex"
+    builtin printf '\033]777;enzui-command;@ENZUI_NONCE@;%s\007' "$hex"
 }
 __enzui_report_cwd() {
     builtin emulate -L zsh || builtin return 0
@@ -15,7 +15,7 @@ __enzui_report_cwd() {
     for ((i = 1; i <= ${#directory}; i++)); do
         builtin printf -v hex '%s%02x' "$hex" "'${directory[i]}"
     done
-    builtin printf '\033]777;enzui-cwd;localhost;%s\007' "$hex"
+    builtin printf '\033]777;enzui-cwd;@ENZUI_NONCE@;localhost;%s\007' "$hex"
 }
 __enzui_precmd() {
     builtin local result=$? || builtin return 0

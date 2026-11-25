@@ -277,6 +277,7 @@ pub(crate) struct Screen {
     dirty: Arc<AtomicU64>,
     pending_effects: TerminalEffects,
     history_disabled: bool,
+    shell_nonce: Option<String>,
     active_command: Option<u64>,
     // Query-time positions and parser order survive the reader/UI handoff.
     pending_replies: VecDeque<Vec<u8>>,
@@ -512,6 +513,7 @@ impl Screen {
             dirty,
             pending_effects: TerminalEffects::default(),
             history_disabled: false,
+            shell_nonce: None,
             active_command: None,
             pending_replies: VecDeque::new(),
             live_target: None,
@@ -647,6 +649,12 @@ impl Screen {
             events.pop_front();
         }
         events.push_back(event);
+    }
+
+    /// Accept integration reports only when they carry `nonce`; `None`
+    /// refuses every report.
+    pub(crate) fn set_shell_nonce(&mut self, nonce: Option<String>) {
+        self.shell_nonce = nonce;
     }
 
     pub(crate) fn disable_shell_integration(&mut self) {

@@ -43,7 +43,7 @@ termwiz = { version = "0.23", default-features = false }
 alacritty_terminal = { git = "https://github.com/enz1m/enzim-alacritty.git", rev = "669bf5c7de1d145dbb6e16fe5e6816914572ff4e", default-features = false }
 unicode-width = "0.2"
 memchr = "2"
-rustix = { version = "1.1", features = ["fs", "process"] }
+rustix = { version = "1.1", features = ["fs", "process", "rand"] }
 filedescriptor = "0.8"
 
 unicode-segmentation = "1"

@@ -18,11 +18,34 @@ use super::*;
 /// and, importantly, is not confused with a success: both suppress the suffix,
 /// but only one of them can later gain a failure suffix.
 pub(crate) fn command_label(item: &model::HistoryItem) -> String {
+    let command = visible_command(&item.command);
     match item.exit_code {
         // Success: the command, and nothing else.
-        Some(0) | None => item.command.clone(),
-        Some(code) => format!("{} [exit {}]", item.command, code),
+        Some(0) | None => command,
+        Some(code) => format!("{command} [exit {code}]"),
     }
+}
+
+/// `command` with control, line-separator, bidirectional and invisible
+/// characters shown as visible marks, so a label reads as the text that runs.
+pub(crate) fn visible_command(command: &str) -> String {
+    let mut out = String::with_capacity(command.len());
+    for ch in command.chars() {
+        match ch {
+            '\u{0}'..='\u{1f}' => out.extend(char::from_u32(0x2400 + u32::from(ch))),
+            '\u{7f}' => out.push('\u{2421}'),
+            '\u{80}'..='\u{9f}'
+            | '\u{61c}'
+            | '\u{200b}'
+            | '\u{200e}'..='\u{200f}'
+            | '\u{2028}'..='\u{2029}'
+            | '\u{202a}'..='\u{202e}'
+            | '\u{2060}'..='\u{2069}'
+            | '\u{feff}' => out.push_str(&format!("<U+{:04X}>", u32::from(ch))),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 impl App {
@@ -139,15 +162,16 @@ impl App {
                     // elided by the SHAPER at the real measured width, so the
                     // amount shown follows the window.
                     let label = command_label(item);
+                    let shown = visible_command(&item.command);
                     let copy_label = crate::i18n::format(
                         crate::i18n::localizer(),
                         "Copy command: {}",
-                        &[("arg0", &(item.command))],
+                        &[("arg0", &shown)],
                     );
                     let paste_label = crate::i18n::format(
                         crate::i18n::localizer(),
                         "Paste command into terminal: {}",
-                        &[("arg0", &(item.command))],
+                        &[("arg0", &shown)],
                     );
                     iced::widget::row![
                         enz_toolbar_icon(

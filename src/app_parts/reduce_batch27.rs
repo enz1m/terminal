@@ -51,10 +51,9 @@ impl App {
         // Shell integration reports the command text, so it is
         // untrusted and goes through the same normalising `paste_bytes`
         // envelope the clipboard path uses.
-        match escape_policy::normalized_paste(&command) {
-            Ok(payload) if payload.is_empty() => {}
-            Ok(payload) => {
-                let bytes = paste_bytes(&payload, self.active_bracketed_paste());
+        match crate::shell_status::history_paste_bytes(&command, self.active_bracketed_paste()) {
+            Ok(bytes) if bytes.is_empty() => {}
+            Ok(bytes) => {
                 if let Some(id) = self.active_pane_id() {
                     self.exclude_pinned_input(&id);
                 }

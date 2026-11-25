@@ -91,7 +91,7 @@ impl Startup {
     }
 }
 
-pub(crate) fn prepare(cmd: &mut CommandBuilder) -> io::Result<Option<Startup>> {
+pub(crate) fn prepare(cmd: &mut CommandBuilder, nonce: &str) -> io::Result<Option<Startup>> {
     let Some((shell, executable)) = detect(cmd) else {
         return Ok(None);
     };
@@ -111,7 +111,7 @@ pub(crate) fn prepare(cmd: &mut CommandBuilder) -> io::Result<Option<Startup>> {
         stage
             .root()
             .create_entry_private(OsStr::new(name))?
-            .write_all(body.as_bytes())
+            .write_all(super::render_nonce(body, nonce).as_bytes())
     };
     match shell {
         Shell::Bash => {
@@ -124,7 +124,10 @@ pub(crate) fn prepare(cmd: &mut CommandBuilder) -> io::Result<Option<Startup>> {
                     "@ENZUI_PROMPT_ARRAY@",
                     &crate::pty::shell_single_quote(&array),
                 )
-                .replace("@ENZUI_HISTORY_DISABLED@", super::HISTORY_DISABLED);
+                .replace(
+                    "@ENZUI_HISTORY_DISABLED@",
+                    &format!("{};{}", super::HISTORY_DISABLED, super::NONCE_PLACEHOLDER),
+                );
             write("bashrc", &body)?;
         }
         Shell::Zsh => {
@@ -132,7 +135,10 @@ pub(crate) fn prepare(cmd: &mut CommandBuilder) -> io::Result<Option<Startup>> {
             write(".zshrc", ZSH_RC)?;
             write("integration.zsh", include_str!("shell_history.zsh"))?;
         }
-        Shell::Fish => write("integration.fish", include_str!("shell_history.fish"))?,
+        Shell::Fish => {
+            write("integration.fish", include_str!("shell_history.fish"))?;
+            write("disabled.fish", FISH_DISABLED)?;
+        }
     }
     cmd.get_argv_mut().truncate(1);
     cmd.get_argv_mut()[0] = executable.into_os_string();
@@ -154,7 +160,7 @@ pub(crate) fn prepare(cmd: &mut CommandBuilder) -> io::Result<Option<Startup>> {
         }
         Shell::Fish => {
             cmd.env("ENZUI_SHELL_STARTUP", stage.path());
-            cmd.args(["--interactive", "--init-command", r#"builtin source "$ENZUI_SHELL_STARTUP/integration.fish"; or builtin printf '\033]777;enzui-history-disabled\007'"#]);
+            cmd.args(["--interactive", "--init-command", r#"builtin source "$ENZUI_SHELL_STARTUP/integration.fish"; or builtin source "$ENZUI_SHELL_STARTUP/disabled.fish""#]);
         }
     }
     Ok(Some(Startup { _stage: stage }))
@@ -170,14 +176,17 @@ builtin typeset -g __enzui_user_zdotdir=${ZDOTDIR:-$HOME}
 ZDOTDIR=$__enzui_stage
 "#;
 
+const FISH_DISABLED: &str = r"builtin printf '\033]777;enzui-history-disabled;@ENZUI_NONCE@\007'
+";
+
 const ZSH_RC: &str = r#"ZDOTDIR=$__enzui_user_zdotdir
 if [[ -r $ZDOTDIR/.zshrc ]]; then
     builtin source "$ZDOTDIR/.zshrc"
 fi
 if ! builtin printf ''; then
-    builtin print -rn -- $'\033]777;enzui-history-disabled\007'
+    builtin print -rn -- $'\033]777;enzui-history-disabled;@ENZUI_NONCE@\007'
 else
-    builtin source "$__enzui_stage/integration.zsh" || builtin printf '\033]777;enzui-history-disabled\007'
+    builtin source "$__enzui_stage/integration.zsh" || builtin printf '\033]777;enzui-history-disabled;@ENZUI_NONCE@\007'
 fi
 builtin unset __enzui_stage __enzui_user_zdotdir
 "#;
