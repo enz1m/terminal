@@ -174,9 +174,20 @@ impl App {
             self.grid_pointer.focus_past_line_end =
                 target.edge == enzui_widgets::text_grid::TextGridEdge::AfterLast;
         }
-        self.grid_pointer.holding = false;
-        // Finalise the selection.
+        let was_holding = std::mem::take(&mut self.grid_pointer.holding);
         self.rebuild_selection();
+
+        if was_holding
+            && iced::clipboard::primary_paste_enabled()
+            && let Some((pane_index, pane_id)) = self.pointer_pane(target)
+            && let Some(range) = self.selection_for(&pane_id)
+        {
+            let text =
+                range.selected_text(&self.sessions[self.active].panes[pane_index].transcript);
+            if !text.is_empty() {
+                return iced::clipboard::write_primary(text).discard();
+            }
+        }
 
         Task::none()
     }

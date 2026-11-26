@@ -84,10 +84,7 @@ impl MouseProtocol {
 ///
 /// Only `Left` exists: the terminal grid's pointer hooks report a left
 /// press/drag/release and nothing else, so a middle- or right-button report has
-/// no source to build from. Middle-click paste needs the primary selection, a
-/// framework question; wiring right-button reporting would start by having the
-/// grid report which button pressed. The `base()` seam keeps the encoding ready
-/// for that button code (`Middle = 1`, `Right = 2`).
+/// no source to build from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Button {
     Left,
