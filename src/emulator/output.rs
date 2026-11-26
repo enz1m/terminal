@@ -339,6 +339,19 @@ impl Screen {
         out
     }
 
+    pub(crate) fn project_exited(&mut self, session_id: &str) -> Vec<TranscriptRow> {
+        use alacritty_terminal::grid::GridCell;
+
+        // The live projection includes viewport padding below the last output.
+        let padding = (0..self.term.screen_lines())
+            .rev()
+            .take_while(|&row| self.row_cells(row).iter().all(GridCell::is_empty))
+            .count();
+        let mut transcript = self.project(session_id);
+        transcript.truncate(transcript.len() - padding);
+        transcript
+    }
+
     /// A from-scratch projection, for the equivalence tests.
     #[cfg(test)]
     pub(crate) fn project_deep_reference(&self, session_id: &str) -> Vec<TranscriptLine> {

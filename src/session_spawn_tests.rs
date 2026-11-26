@@ -255,3 +255,41 @@ fn closing_a_tab_with_a_running_command_asks_first() {
     assert!(!open(&app) && !app.ptys.contains_key(&pid));
     assert!(app.pending_running_close.is_none());
 }
+
+#[test]
+fn shell_exit_reports_status_beside_output_and_hides_the_cursor() {
+    let mut app = App::session_fixture();
+    let id = app.active_pane_id().unwrap();
+    let wake = Box::leak(Box::new(pty::WakeBus::default()));
+    let child = pty::PtySession::spawn_exit_probe_with_code(&id, wake, 0).unwrap();
+    app.install_pty(id.clone(), child);
+
+    let drain_until = |app: &mut App, ready: fn(&App) -> bool| {
+        let deadline = std::time::Instant::now() + GATE;
+        while !ready(app) {
+            assert!(std::time::Instant::now() < deadline, "PTY did not settle");
+            if wake.take() {
+                let _ = app.update(Message::Poll);
+            } else {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    };
+
+    drain_until(&mut app, |app| {
+        app.active_pane().unwrap().transcript[0].text() == pty::EXIT_PROBE_READY
+    });
+    let screen = enzui_terminal::TerminalScreen::new(80, 24, enzui_terminal::Rgba::rgb(0, 0, 0));
+    let child = &app.ptys[&id];
+    child.set_live(Some((&screen, true, "block")), 0, true);
+    child.write(b"exit\n").unwrap();
+    drain_until(&mut app, |app| app.ptys.is_empty());
+
+    let pane = app.active_pane().unwrap();
+    assert_eq!(pane.transcript[0].text(), pty::EXIT_PROBE_READY);
+    assert_eq!(
+        pane.transcript[1].text(),
+        format!("{SHELL_EXITED_PREFIX}exit code 0")
+    );
+    assert!(pane.cursor_hidden);
+}

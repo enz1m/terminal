@@ -318,6 +318,7 @@ pub(crate) use exit::{describe_child_exit, open_pidfd, process_start_ticks, read
 
 pub(crate) struct PtyUpdate {
     pub(crate) snapshot: Option<Vec<TranscriptRow>>,
+    pub(crate) child_exit: Option<ChildExit>,
     pub(crate) effects: emulator::TerminalEffects,
     pub(crate) alt_screen: bool,
     pub(crate) cursor_hidden: bool,
@@ -418,16 +419,6 @@ impl PtySession {
             .lock()
             .map(|mut r| std::mem::take(&mut *r))
             .unwrap_or_default()
-    }
-
-    /// Take the exit published by the child waiter exactly once.
-    ///
-    /// The waiter rings the wake bus only after this slot is populated. This
-    /// ordering matters: an output wake can reach the app just before the child
-    /// becomes waitable, and the app has no polling timer that would otherwise
-    /// retry a premature `try_wait`.
-    pub(crate) fn take_child_exit(&self) -> Option<ChildExit> {
-        self.child_exit.lock().ok()?.take()
     }
 
     /// Whether this child received its secret through the sealed `memfd`
@@ -629,10 +620,17 @@ impl PtySession {
         let effects = screen.take_effects();
         let changed =
             current != self.last_seen.load(Ordering::SeqCst) || effects.coordinates_invalidated;
-        let snapshot = changed.then(|| screen.project(&self.session_id));
+        let child_exit = self.child_exit.lock().ok().and_then(|mut exit| exit.take());
+        let snapshot = if child_exit.is_some() {
+            let _ = screen.set_live(None);
+            Some(screen.project_exited(&self.session_id))
+        } else {
+            changed.then(|| screen.project(&self.session_id))
+        };
         self.last_seen.store(current, Ordering::SeqCst);
         Some(PtyUpdate {
             snapshot,
+            child_exit,
             effects,
             alt_screen: screen.is_alt_screen(),
             cursor_hidden: !screen.cursor_shown(),

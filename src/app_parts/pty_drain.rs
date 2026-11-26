@@ -22,6 +22,7 @@ impl App {
                 };
                 let Some(pty::PtyUpdate {
                     snapshot,
+                    child_exit,
                     effects,
                     alt_screen: alt,
                     cursor_hidden,
@@ -32,7 +33,6 @@ impl App {
                 else {
                     continue;
                 };
-                let child_exit = pty.take_child_exit();
                 let secret_delivery = pty.secret_delivery();
                 if effects.coordinates_invalidated {
                     self.invalidate_pane_coordinates(&pid);
@@ -105,6 +105,7 @@ impl App {
                 };
                 if let Some(pane) = self.sessions[si].panes.get_mut(pi) {
                     pane.status = status;
+                    pane.cursor_hidden = true;
                     pane.transcript
                         .push(TranscriptRow::new(TranscriptLine::monochrome(
                             format!("{pid}-exit"),
