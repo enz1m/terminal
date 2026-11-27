@@ -140,9 +140,11 @@ impl App {
                 .aria_label(crate::i18n::label("Jump to latest output"))
                 .into_element()
             });
-        let surface = iced::widget::mouse_area(self.transcript_surface(chrome, jump))
-            .on_press(Message::FocusPane(pane_id.to_owned()))
-            .into();
-        self.input_surface(session, pane, win_start, surface)
+        self.input_surface(
+            session,
+            pane,
+            win_start,
+            self.transcript_surface(chrome, jump),
+        )
     }
 }

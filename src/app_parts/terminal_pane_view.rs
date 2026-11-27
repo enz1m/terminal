@@ -144,7 +144,6 @@ impl App {
                     ..container::Style::default()
                 }),
         ];
-        let id = pane.id.clone();
         let labelled = SemanticsContainer::new(
             painted,
             Semantics::new(Role::Group)
@@ -159,13 +158,7 @@ impl App {
             "terminal-pane-{}",
             pane.id
         )));
-        // The grid captures presses on text; the `mouse_area` catches presses
-        // it declines (the inset margin, the scrollbar lane) so an edge click
-        // still focuses the leaf.
-        let leaf = iced::widget::mouse_area(labelled)
-            .on_press(Message::FocusPane(id))
-            .into();
-        self.input_surface(session, pane, win_start, leaf)
+        self.input_surface(session, pane, win_start, labelled.into())
     }
 
     /// The terminal pane(s) alone: one surface, a single narrow-rung leaf, or

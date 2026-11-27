@@ -4,7 +4,7 @@ use iced::advanced::{
     Layout, Shell, Widget, layout, mouse, overlay, renderer,
     widget::{Operation, Tree, tree},
 };
-use iced::{Element, Event, Length, Rectangle, Size, Vector};
+use iced::{Element, Event, Length, Point, Rectangle, Size, Vector, touch};
 
 pub(crate) fn surface<'a>(
     child: Element<'a, Message>,
@@ -46,6 +46,8 @@ struct SurfaceState {
     owner: OperationOrigin,
     epoch: crate::operation_origin::RequestGeneration,
     range: Option<crate::selection::SelectionRange>,
+    fingers: Vec<touch::Finger>,
+    tap_start: Option<Point>,
     copy_lifetime: enzui_core::cancellation::CancelToken,
 }
 
@@ -68,11 +70,17 @@ impl Widget<Message, iced::Theme, iced::Renderer> for InputSurface<'_> {
             owner: self.origin.clone(),
             epoch: self.selection.epoch.clone(),
             range: self.selection.range,
+            fingers: Vec::new(),
+            tap_start: None,
             copy_lifetime: enzui_core::cancellation::CancelToken::new(),
         })
     }
     fn diff(&mut self, tree: &mut Tree) {
         let state = tree.state.downcast_mut::<SurfaceState>();
+        if state.owner != self.origin {
+            state.fingers.clear();
+            state.tap_start = None;
+        }
         if state.owner != self.origin
             || state.epoch != self.selection.epoch
             || state.range != self.selection.range
@@ -165,6 +173,13 @@ impl Widget<Message, iced::Theme, iced::Renderer> for InputSurface<'_> {
         let bounds = layout.bounds();
         if let Event::Mouse(iced::mouse::Event::ButtonPressed(button)) = event {
             let inside = cursor.is_over(bounds);
+            if *button == iced::mouse::Button::Left && inside && !shell.is_event_captured() {
+                shell.publish(Message::PaneInput(
+                    self.origin.clone(),
+                    Box::new(Message::FocusPane(self.origin.pane.clone())),
+                ));
+                shell.capture_event();
+            }
             if inside || self.enabled {
                 shell.publish(Message::PaneInput(
                     self.origin.clone(),
@@ -177,6 +192,49 @@ impl Widget<Message, iced::Theme, iced::Renderer> for InputSurface<'_> {
                     Box::new(Message::InputMenuOpen),
                 ));
                 shell.capture_event();
+            }
+        }
+        if let Event::Touch(event) = event {
+            const TAP_SLOP: f32 = 8.0;
+            let state = tree.state.downcast_mut::<SurfaceState>();
+            let visible = bounds.intersection(viewport);
+            let inside = |position| visible.is_some_and(|clip| clip.contains(position));
+            match *event {
+                touch::Event::FingerPressed { id, position } if inside(position) => {
+                    if !state.fingers.contains(&id) {
+                        state.tap_start = state.fingers.is_empty().then_some(position);
+                        state.fingers.push(id);
+                    }
+                }
+                touch::Event::FingerMoved { id, position } => {
+                    if state.fingers.as_slice() == [id]
+                        && state.tap_start.is_some_and(|start| {
+                            start.distance(position) > TAP_SLOP || !inside(position)
+                        })
+                    {
+                        state.tap_start = None;
+                    }
+                }
+                touch::Event::FingerLifted { id, position } => {
+                    if state.fingers.as_slice() == [id]
+                        && state.tap_start.take().is_some_and(|start| {
+                            start.distance(position) <= TAP_SLOP && inside(position)
+                        })
+                        && !shell.is_event_captured()
+                    {
+                        shell.publish(Message::PaneInput(
+                            self.origin.clone(),
+                            Box::new(Message::InputFocus(true)),
+                        ));
+                        shell.capture_event();
+                    }
+                    state.fingers.retain(|finger| *finger != id);
+                }
+                touch::Event::FingerLost { id, .. } if state.fingers.contains(&id) => {
+                    state.fingers.retain(|finger| *finger != id);
+                    state.tap_start = None;
+                }
+                _ => {}
             }
         }
         if self.enabled {
@@ -223,5 +281,87 @@ impl Widget<Message, iced::Theme, iced::Renderer> for InputSurface<'_> {
             translation,
             window,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operation_origin::RequestGeneration;
+    use iced_test::Simulator;
+
+    #[test]
+    fn only_a_completed_single_finger_tap_focuses_the_surface() {
+        use touch::{Event as Touch, Finger};
+
+        let origin = OperationOrigin {
+            session: "session".into(),
+            pane: "pane".into(),
+            window: Some(iced::window::Id::unique()),
+            generation: RequestGeneration::new(),
+        };
+        let view = surface(
+            iced::widget::Space::new()
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into(),
+            origin.clone(),
+            false,
+            None,
+            Rectangle::default(),
+            SelectionSource {
+                epoch: RequestGeneration::new(),
+                range: None,
+                resolve: Box::new(|_, _| None),
+            },
+        );
+        let mut ui = Simulator::with_size(iced::Settings::default(), (200.0, 200.0), view);
+        let first = Finger(1);
+        let other = Finger(2);
+        let position = Point::new(20.0, 20.0);
+        let _ = ui.simulate([
+            Event::Touch(Touch::FingerPressed {
+                id: first,
+                position,
+            }),
+            Event::Touch(Touch::FingerPressed {
+                id: other,
+                position,
+            }),
+            Event::Touch(Touch::FingerLifted {
+                id: first,
+                position,
+            }),
+            Event::Touch(Touch::FingerLifted {
+                id: other,
+                position,
+            }),
+            Event::Touch(Touch::FingerPressed {
+                id: first,
+                position,
+            }),
+            Event::Touch(Touch::FingerMoved {
+                id: first,
+                position: Point::new(50.0, 20.0),
+            }),
+            Event::Touch(Touch::FingerLifted {
+                id: first,
+                position,
+            }),
+            Event::Touch(Touch::FingerPressed {
+                id: first,
+                position,
+            }),
+            Event::Touch(Touch::FingerLifted {
+                id: first,
+                position,
+            }),
+        ]);
+        let mut messages = ui.into_messages();
+        assert!(matches!(
+            messages.next(),
+            Some(Message::PaneInput(owner, message)) if owner == origin && matches!(*message, Message::InputFocus(true))
+        ));
+        assert!(messages.next().is_none());
     }
 }
