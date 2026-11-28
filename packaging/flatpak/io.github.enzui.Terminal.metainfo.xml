@@ -29,6 +29,9 @@
     <name>enzUI contributors</name>
   </developer>
   <releases>
+    <release version="0.1.3" date="2026-11-28">
+      <description><p>Focus terminal panes after a touch tap, publish completed selections as PRIMARY, and show shell exit status alongside the final output.</p></description>
+    </release>
     <release version="0.1.2" date="2026-11-23">
       <description>
         <p>A new tab opened from the title bar is ready for typing immediately, and fast command output redraws more smoothly.</p>
